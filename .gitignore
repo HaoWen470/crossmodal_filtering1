@@ -1,0 +1,5 @@
+__pycache__
+*.swp
+*.pyc
+.ipynb_checkpoints
+.mypy_cache
