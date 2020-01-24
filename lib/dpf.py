@@ -3,8 +3,7 @@ import torch
 import torch.nn as nn
 import abc
 
-from .utils import torch_utils
-from .utils import misc_utils
+from fannypack import utils
 
 
 def gmm_loss(particles_states, log_weights, true_states, gmm_variances=1.):
@@ -23,7 +22,7 @@ def gmm_loss(particles_states, log_weights, true_states, gmm_variances=1.):
             (N, state_dim), device=device) * gmm_variances
     elif type(gmm_variances) == np.ndarray:
         new_gmm_variances = torch.ones((N, state_dim), device=device)
-        new_gmm_variances[:, :] = torch_utils.to_torch(gmm_variances)
+        new_gmm_variances[:, :] = utils.to_torch(gmm_variances)
         gmm_variances = new_gmm_variances
     else:
         assert False, "Invalid variances"
@@ -113,16 +112,16 @@ class ParticleFilterDataset(torch.utils.data.Dataset):
                     output = {}
                     for key, value in x.items():
                         output[key] = split(value)
-                    return misc_utils.DictIterator(output)
+                    return utils.DictIterator(output)
                 else:
                     assert False
 
             for s, o, c in zip(split(states), split(
                     observation), split(controls)):
                 # Numpy => Torch
-                s = torch_utils.to_torch(s)
-                o = torch_utils.to_torch(o)
-                c = torch_utils.to_torch(c)
+                s = utils.to_torch(s)
+                o = utils.to_torch(o)
+                c = utils.to_torch(c)
 
                 # Add to subsequences
                 subsequences.append((s, o, c))
@@ -252,7 +251,8 @@ class ParticleFilterNetwork(nn.Module):
         # Re-sampling
         if resample:
             if self.soft_resample_alpha < 1.0:
-                # This still needs to be re-adapted for the new minibatch shape
+                # TODO: This still needs to be re-adapted for the new minibatch
+                # shape
                 assert False
 
                 # Soft re-sampling

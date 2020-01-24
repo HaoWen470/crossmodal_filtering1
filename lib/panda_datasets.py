@@ -1,13 +1,25 @@
 import torch
 import numpy as np
 import scipy.stats
+from tqdm import tqdm_notebook
 
 from fannypack import utils
 
 from . import dpf
 
+
 def load_trajectories(*paths, use_vision=True,
                       vision_interval=10, use_proprioception=True, use_haptics=True, **unused):
+    """
+    Loads a list of trajectories from a set of input paths, where each trajectory is a tuple
+    containing...
+        states: an (T, state_dim) array of state vectors
+        observations: a key->(T, *) dict of observations
+        controls: an (T, control_dim) array of control vectors
+
+    Each path can either be a string or a (string, int) tuple, where int indicates the maximum
+    number of timesteps to import.
+    """
     trajectories = []
 
     for path in paths:
@@ -21,14 +33,27 @@ def load_trajectories(*paths, use_vision=True,
             for i, trajectory in enumerate(f):
                 if i >= count:
                     break
-                # Possible keys:
-                # 'joint_pos' 'joint_vel' 'gripper_qpos' 'gripper_qvel' 'eef_pos' 'eef_quat'
-                # 'eef_vlin' 'eef_vang' 'robot-state' 'prev-act' 'contact-obs' 'ee-force-obs'
-                # 'ee-torque-obs' 'object-state' 'image'
+                # # Possible keys:
+                # 'eef_pos',
+                # 'eef_quat',
+                # 'eef_vlin',
+                # 'eef_vang',
+                # 'force',
+                # 'force_hi_freq',
+                # 'contact',
+                # 'Bread0_pos',
+                # 'Bread0_quat',
+                # 'Bread0_to_eef_pos',
+                # 'Bread0_to_eef_quat',
+                # 'image',
+                # 'Bread0_state'
 
-                # Pull out trajectory states -- this is just door position & velocity
-                # states = trajectory['object-state'][:, 1:3]
-                states = trajectory['object-state'][:, 1:2]
+                # Pull out trajectory states -- this contains (x,y,cos theta,
+                # sin theta) of the bread
+                states = trajectory['Bread0_state']
+
+                # TODO: temporary, remove
+                states = states[:,:2]
 
                 # Pull out observation states
                 observations = {}
@@ -36,15 +61,14 @@ def load_trajectories(*paths, use_vision=True,
                     trajectory['eef_pos'],
                     trajectory['eef_quat'],
                 ), axis=1)
-                # observations['gripper_velocity'] = np.concatenate((
-                #     trajectory['eef_vlin'],
-                #     trajectory['eef_vang'],
-                # ), axis=1)
+                assert observations['gripper_pose'].shape[1] == 7
+
                 observations['gripper_sensors'] = np.concatenate((
-                    trajectory['contact-obs'][:, np.newaxis],
-                    trajectory['ee-force-obs'],
-                    trajectory['ee-torque-obs'],
+                    trajectory['force'],
+                    trajectory['contact'][:, np.newaxis],
                 ), axis=1)
+                assert observations['gripper_sensors'].shape[1] == 7
+
                 if not use_proprioception:
                     observations['gripper_pose'][:] = 0
                 if not use_haptics:
@@ -57,15 +81,13 @@ def load_trajectories(*paths, use_vision=True,
                         index = min(index, len(observations['image']))
                         observations['image'][i] = trajectory['image'][index]
 
+                ## TODO: control stuff needs to be fixed probably
                 # Pull out control states
                 control_keys = [
                     'eef_pos',
                     'eef_quat',
-                    'eef_vlin',
-                    'eef_vang',
-                    'ee-force-obs',
-                    'ee-torque-obs',
-                    'contact-obs'
+                    'force',
+                    'contact'
                 ]
                 controls = []
                 for key in control_keys:
@@ -160,10 +182,10 @@ class PandaMeasurementDataset(torch.utils.data.Dataset):
 
         trajectories = load_trajectories(*paths, **kwargs)
 
-        self.std_dev = std_dev
+        self.std_dev = np.array(std_dev)
         self.samples_per_pair = samples_per_pair
         self.dataset = []
-        for i, trajectory in enumerate(trajectories):
+        for i, trajectory in enumerate(tqdm_notebook(trajectories)):
             assert len(trajectory) == 3
             states, observations, controls = trajectory
 
@@ -178,10 +200,6 @@ class PandaMeasurementDataset(torch.utils.data.Dataset):
 
                 self.dataset.append((state, observation))
 
-                utils.progress_bar(
-                    (i + (t / timesteps)) / len(trajectories))
-        utils.progress_bar(1.)
-
         print("Loaded {} points".format(len(self.dataset)))
 
     def __getitem__(self, index):
@@ -192,6 +210,8 @@ class PandaMeasurementDataset(torch.utils.data.Dataset):
 
         state, observation = self.dataset[index // self.samples_per_pair]
 
+        assert self.std_dev.shape == state.shape
+
         if index % self.samples_per_pair < self.samples_per_pair * 0.5:
             noisy_state = state + \
                 np.random.normal(
@@ -199,10 +219,10 @@ class PandaMeasurementDataset(torch.utils.data.Dataset):
         else:
             noisy_state = state + \
                 np.random.normal(
-                    loc=0., scale=self.std_dev * 5, size=state.shape)
+                    loc=0., scale=self.std_dev * 10, size=state.shape)
 
         log_likelihood = np.asarray(scipy.stats.multivariate_normal.logpdf(
-            noisy_state, mean=state, cov=self.std_dev ** 2))
+            noisy_state, mean=state, cov=np.diag(self.std_dev ** 2)))
 
         return utils.to_torch((noisy_state, observation, log_likelihood))
 
@@ -248,7 +268,7 @@ class PandaParticleFilterDataset(dpf.ParticleFilterDataset):
             len(active_subsequences) // 2,
             len(inactive_subsequences)
         )
-        print("Keeping:", keep_count)
+        print("Keeping (inactive):", keep_count)
 
         np.random.shuffle(inactive_subsequences)
         self.subsequences = active_subsequences + \

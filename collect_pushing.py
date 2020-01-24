@@ -38,7 +38,7 @@ if __name__ == "__main__":
         type=str,
         default="PandaPickPlaceBread")
     parser.add_argument('target_path', type=str)
-    parser.add_argument("--device", type=str, default="keyboard")
+    parser.add_argument("--traj-count", type=int, default=10)
     parser.add_argument("--reset-count", type=int, default=20)
     parser.add_argument('--preview', action='store_true')
     parser.add_argument('--visualize_observations', action='store_true')
@@ -73,7 +73,7 @@ if __name__ == "__main__":
     )
 
     trajectories_file = fannypack.utils.TrajectoriesFile(
-        target_path, diagnostics=True)
+        target_path, diagnostics=True, read_only=False)
 
     def save_obs(obs):
         # keys
@@ -96,7 +96,7 @@ if __name__ == "__main__":
         relevant_obs = {key: obs[key] for key in keep}
 
         if not preview_mode:
-            image = np.mean(obs['image'], axis=2)
+            image = np.mean(obs['image'], axis=2) / 127.5 - 1.
             start_y, start_x = 17, 0
             image = image[start_y:start_y + 32]
             image = image[:, start_x:start_x + 32]
@@ -125,7 +125,8 @@ if __name__ == "__main__":
     controller = env.controller
     print("Controller: {}".format(controller))
     grasp = 0
-    while True:
+    while len(trajectories_file) < args.traj_count:
+
         count = 0
         obs = env.reset()
         if preview_mode:

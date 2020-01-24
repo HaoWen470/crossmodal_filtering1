@@ -1,6 +1,7 @@
 import torch
 import numpy as np
 import matplotlib.pyplot as plt
+from tqdm import tqdm_notebook
 
 from fannypack import utils
 
@@ -28,10 +29,13 @@ def train_dynamics(buddy, pf_model, dataloader, log_interval=10):
         loss = mse_pos
         losses.append(utils.to_numpy(loss))
 
-        buddy.minimize(loss, optimizer_name="dynamics", checkpoint_interval=10000)
+        buddy.minimize(
+            loss,
+            optimizer_name="dynamics",
+            checkpoint_interval=10000)
 
         if buddy._steps % log_interval == 0:
-            with buddy.log_namespace("dynamics"):
+            with buddy.log_scope("dynamics"):
                 # buddy.log("Training loss", loss)
                 buddy.log("MSE position", mse_pos)
 
@@ -55,7 +59,7 @@ def train_measurement(buddy, pf_model, dataloader, log_interval=10):
     losses = []
 
     # Train measurement model only for 1 epoch
-    for batch_idx, batch in enumerate(dataloader):
+    for batch_idx, batch in enumerate(tqdm_notebook(dataloader)):
         # Transfer to GPU and pull out batch data
         batch_gpu = utils.to_device(batch, buddy._device)
         noisy_states, observations, log_likelihoods = batch_gpu
@@ -69,10 +73,13 @@ def train_measurement(buddy, pf_model, dataloader, log_interval=10):
         loss = torch.mean((pred_likelihoods - log_likelihoods) ** 2)
         losses.append(utils.to_numpy(loss))
 
-        buddy.minimize(loss, optimizer_name="measurement", checkpoint_interval=10000)
+        buddy.minimize(
+            loss,
+            optimizer_name="measurement",
+            checkpoint_interval=10000)
 
         if buddy._steps % log_interval == 0:
-            with buddy.log_namespace("measurement"):
+            with buddy.log_scope("measurement"):
                 buddy.log("Training loss", loss)
 
                 buddy.log("Pred likelihoods mean", pred_likelihoods.mean())
@@ -81,9 +88,6 @@ def train_measurement(buddy, pf_model, dataloader, log_interval=10):
                 buddy.log("Label likelihoods mean", log_likelihoods.mean())
                 buddy.log("Label likelihoods std", log_likelihoods.std())
 
-            print(".", end="")
-            if buddy._steps % (log_interval * 10) == 0:
-                print("[{:.2f}%]".format(batch_idx / len(dataloader) * 100.), end="")
     print("Epoch loss:", np.mean(losses))
 
 
@@ -91,7 +95,7 @@ def train_e2e(buddy, pf_model, dataloader, log_interval=10, loss_type="gmm"):
     losses = []
 
     # Train for 1 epoch
-    for batch_idx, batch in enumerate(dataloader):
+    for batch_idx, batch in enumerate(tqdm_notebook(dataloader)):
         # Transfer to GPU and pull out batch data
         batch_gpu = utils.to_device(batch, buddy._device)
         batch_particles, batch_states, batch_obs, batch_controls = batch_gpu
@@ -127,7 +131,8 @@ def train_e2e(buddy, pf_model, dataloader, log_interval=10, loss_type="gmm"):
                     gmm_variances=np.array([0.1])
                 )
             elif loss_type == "mse":
-                loss = torch.mean((state_estimates - batch_states[:, t, :]) ** 2)
+                loss = torch.mean(
+                    (state_estimates - batch_states[:, t, :]) ** 2)
             else:
                 assert False, "Invalid loss"
 
@@ -135,21 +140,23 @@ def train_e2e(buddy, pf_model, dataloader, log_interval=10, loss_type="gmm"):
 
             # assert state_estimates.shape == batch_states[:, t, :].shape
 
-            buddy.minimize(loss, optimizer_name="e2e", checkpoint_interval=10000)
+            buddy.minimize(
+                loss,
+                optimizer_name="e2e",
+                checkpoint_interval=10000)
 
             # Disable backprop through time
             particles = new_particles.detach()
             log_weights = new_log_weights.detach()
 
             if buddy._steps % log_interval == 0:
-                with buddy.log_namespace("e2e"):
+                with buddy.log_scope("e2e"):
                     buddy.log("Training loss", loss)
                     buddy.log("Log weights mean", log_weights.mean())
                     buddy.log("Log weights std", log_weights.std())
                     buddy.log("Particle states mean", particles.mean())
                     buddy.log("particle states std", particles.std())
 
-            print(".", end="")
     print("Epoch loss:", np.mean(losses))
 
 
@@ -175,7 +182,7 @@ def rollout(pf_model, trajectories, start_time=0, max_timesteps=300,
     particles = utils.to_torch(particles, device=device)
     log_weights = torch.ones((N, M), device=device) * (-np.log(M))
 
-    for t in range(start_time + 1, end_time):
+    for t in tqdm_notebook(range(start_time + 1, end_time)):
         s = []
         o = {}
         c = []
@@ -203,18 +210,11 @@ def rollout(pf_model, trajectories, start_time=0, max_timesteps=300,
 
         particles = new_particles
         log_weights = new_log_weights
-        #print(state_estimates)
 
         for i in range(len(trajectories)):
             predicted_states[i].append(
                 utils.to_numpy(
                     state_estimates[i]))
-
-        if t % 10 == 0:
-            print(".", end="")
-    print()
-    #     utils.progress_bar(t / (end_time - start_time))
-    # utils.progress_bar(1.)
 
     predicted_states = np.array(predicted_states)
     actual_states = np.array(actual_states)
@@ -229,31 +229,38 @@ def eval_rollout(predicted_states, actual_states, plot=False):
             colors = ['b', 'g', 'r', 'c', 'm', 'y', 'k']
             return colors[i % len(colors)]
 
-        plt.figure(figsize=(8, 6))
-        for i, (pred, actual) in enumerate(zip(predicted_states, actual_states)):
-            predicted_label_arg = {}
-            actual_label_arg = {}
-            if i == 0:
-                predicted_label_arg['label'] = "Predicted"
-                actual_label_arg['label'] = "Ground Truth"
+        state_dim = actual_states.shape[-1]
+        for j in range(state_dim):
+            plt.figure(figsize=(8, 6))
+            for i, (pred, actual) in enumerate(
+                    zip(predicted_states, actual_states)):
+                predicted_label_arg = {}
+                actual_label_arg = {}
+                if i == 0:
+                    predicted_label_arg['label'] = "Predicted"
+                    actual_label_arg['label'] = "Ground Truth"
+                plt.plot(range(timesteps),
+                         pred[:, j],
+                         c=color(i),
+                         alpha=0.3,
+                         **predicted_label_arg)
+                plt.plot(range(timesteps),
+                         actual[:, j],
+                         c=color(i),
+                         **actual_label_arg)
 
-            plt.plot(range(timesteps),
-                     pred[:, 0],
-                     c=color(i),
-                     alpha=0.3,
-                     **predicted_label_arg)
-            plt.plot(range(timesteps),
-                     actual[:, 0],
-                     c=color(i),
-                     **actual_label_arg)
+            plt.xlabel("Timesteps")
+            plt.ylabel("Position")
+            plt.legend()
+            plt.show()
 
-        plt.xlabel("Timesteps")
-        plt.ylabel("Position")
-        plt.legend()
-        plt.show()
+    print("X RMSE: ", np.sqrt(np.mean((predicted_states[:, :, 0] - actual_states[:, :, 0])**2)))
+    print("Y RMSE: ", np.sqrt(np.mean((predicted_states[:, :, 1] - actual_states[:, :, 1])**2)))
 
-    print("Position RMSE, degrees: ", np.sqrt(np.mean(
-        (predicted_states[:, :, 0] - actual_states[:, :, 0])**2)) * 180. / np.pi)
+    # predicted_angles = np.arctan2(predicted_states[:, :, 3], predicted_states[:, :, 2])
+    # actual_angles = np.arctan2(actual_states[:, :, 3], actual_states[:, :, 2])
+    # angle_offsets = (predicted_angles - actual_angles + np.pi) % (2 * np.pi) - np.pi
+    # print("Theta RMSE (degrees): ", np.sqrt(np.mean(angle_offsets ** 2)) * 180. / np.pi)
 
 #     plt.figure(figsize=(15,10))
 #     for i, (pred, actual) in enumerate(zip(predicted_states, actual_states)):
