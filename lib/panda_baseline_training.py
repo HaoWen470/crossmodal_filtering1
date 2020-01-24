@@ -1,6 +1,7 @@
 import torch
 import numpy as np
 import matplotlib.pyplot as plt
+from tqdm import tqdm_notebook
 
 from fannypack import utils
 
@@ -9,7 +10,7 @@ def train(buddy, model, dataloader, log_interval=10, state_noise_std=0.2):
     losses = []
 
     # Train for 1 epoch
-    for batch_idx, batch in enumerate(dataloader):
+    for batch_idx, batch in enumerate(tqdm(dataloader)):
         # Transfer to GPU and pull out batch data
         batch_gpu = utils.to_device(batch, buddy._device)
         prev_states, observations, controls, new_states = batch_gpu
@@ -47,7 +48,6 @@ def train(buddy, model, dataloader, log_interval=10, state_noise_std=0.2):
                 buddy.log("Predicted pos mean", pred_mean[0])
                 # buddy.log("Predicted vel mean", pred_mean[1])
 
-            print(".", end="")
 
     print("Epoch loss:", np.mean(losses))
 
