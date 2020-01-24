@@ -84,10 +84,10 @@ def load_trajectories(*paths, use_vision=True,
                 ## TODO: control stuff needs to be fixed probably
                 # Pull out control states
                 control_keys = [
-                    'eef_pos',
-                    'eef_quat',
-                    'force',
-                    'contact'
+                    'eef_pos', # 3
+                    'eef_quat', # 7
+                    'force', # 6
+                    'contact' # 1
                 ]
                 controls = []
                 for key in control_keys:
