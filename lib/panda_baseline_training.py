@@ -27,7 +27,7 @@ def train(buddy, model, dataloader, log_interval=10, state_noise_std=0.2):
         buddy.minimize(loss, checkpoint_interval=10000)
 
         if buddy._steps % log_interval == 0:
-            with buddy.log_namespace("baseline_training"):
+            with buddy.log_scope("baseline_training"):
                 buddy.log("Training loss", loss)
                 # buddy.log("MSE position", mse_pos)
                 # buddy.log("MSE velocity", mse_vel)
