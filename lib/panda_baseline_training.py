@@ -78,7 +78,7 @@ def rollout(model, trajectories, max_timesteps=300):
         device = next(model.parameters()).device
         pred = model(*utils.to_torch([s, o, c], device=device))
         pred = utils.to_numpy(pred)
-        assert pred.shape == (len(trajectories), 1)
+        assert pred.shape == (len(trajectories), 2)
         for i in range(len(trajectories)):
             predicted_states[i].append(pred[i])
 
