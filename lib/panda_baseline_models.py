@@ -17,7 +17,7 @@ class PandaBaselineModel(nn.Module):
         obs_pose_dim = 7
         obs_sensors_dim = 7
         state_dim = 2
-        control_dim = 17
+        control_dim = 14
 
         self.state_layers = nn.Sequential(
             nn.Linear(state_dim, units // 2),
