@@ -10,7 +10,7 @@ def train(buddy, model, dataloader, log_interval=10, state_noise_std=0.2):
     losses = []
 
     # Train for 1 epoch
-    for batch_idx, batch in enumerate(tqdm(dataloader)):
+    for batch_idx, batch in enumerate(tqdm_notebook(dataloader)):
         # Transfer to GPU and pull out batch data
         batch_gpu = utils.to_device(batch, buddy._device)
         prev_states, observations, controls, new_states = batch_gpu
