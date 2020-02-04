@@ -6,6 +6,115 @@ import torch.nn.functional as F
 from fannypack.nn import resblocks
 
 
+class PandaLSTMModel(nn.Module):
+
+    def __init__(self, batch_size, units=32):
+
+        obs_pose_dim = 7
+        obs_sensors_dim = 7
+        state_dim = 2
+
+        super().__init__()
+        self.batch_size = batch_size
+        self.lstm_hidden_dim = state_dim
+        self.lstm_num_layers = 2
+        self.units = units
+
+        # Observation encoders
+        self.image_rows = 32
+        self.image_cols = 32
+        self.observation_image_layers = nn.Sequential(
+            nn.Conv2d(in_channels=1, out_channels=4, kernel_size=3, padding=1),
+            nn.ReLU(inplace=True),
+            # resblocks.Conv2d(channels=4),
+            nn.Conv2d(in_channels=4, out_channels=1, kernel_size=3, padding=1),
+            nn.ReLU(inplace=True),
+            nn.Flatten(),
+            nn.Linear((self.image_rows * self.image_cols), units),
+            nn.ReLU(inplace=True),
+            resblocks.Linear(units),
+        )
+        self.observation_pose_layers = nn.Sequential(
+            nn.Linear(obs_pose_dim, units),
+            resblocks.Linear(units),
+        )
+        self.observation_sensors_layers = nn.Sequential(
+            nn.Linear(obs_sensors_dim, units),
+            resblocks.Linear(units),
+        )
+
+        # Fusion layer
+        self.fusion_layers = nn.Sequential(
+            nn.Linear(units * 3, units),
+            nn.ReLU(inplace=True),
+            resblocks.Linear(units)
+        )
+
+        # LSTM layers
+        self.lstm = nn.LSTM(
+            units,
+            self.lstm_hidden_dim,
+            self.lstm_num_layers,
+            batch_first=True)
+
+        # Define the output layer
+        self.output_layers = nn.Identity()
+
+    def reset_hidden(self, initial_states=None):
+        self.hidden = (torch.zeros(self.lstm_num_layers, self.batch_size, self.lstm_hidden_dim),
+                       torch.zeros(self.lstm_num_layers, self.batch_size, self.lstm_hidden_dim))
+
+        if initial_states is not None:
+            assert initial_states.shape == (
+                self.batch_size, self.lstm_hidden_dim)
+
+            # Set hidden state (h0) of layer #1 to our initial states
+            self.hidden[0][1] = initial_states
+
+    def forward(self, observations):
+        # Observations: key->value
+        # where shape of value is (seq_len, batch, *)
+        sequence_length = observations['image'].shape[0]
+        assert observations['image'].shape[1] == self.batch_size
+        assert observations['gripper_pose'].shape[0] == sequence_length
+        assert observations['gripper_sensors'].shape[0] == sequence_length
+
+        # Forward pass through observation encoders
+        image_features = self.observation_image_layers(
+            observations['image'][:, :, np.newaxis, :, :].reshape(
+                sequence_length * self.batch_size, -1, self.image_rows, self.image_cols)
+        ).reshape((sequence_length, self.batch_size, self.units))
+
+        observation_features = torch.cat((
+            image_features,
+            self.observation_pose_layers(observations['gripper_pose']),
+            self.observation_sensors_layers(observations['gripper_sensors']),
+        ), dim=-1)
+        assert observation_features.shape == (
+            sequence_length, self.batch_size, self.units * 3)
+
+        fused_features = self.fusion_layers(observation_features)
+
+        # Forward pass through LSTM layer
+        # shape of lstm_out: [input_size, batch_size, lstm_hidden_dim]
+        # shape of self.hidden: (a, b), where a and b both
+        # have shape (lstm_num_layers, batch_size, lstm_hidden_dim).
+        lstm_out, self.hidden = self.lstm(
+            fused_features,
+            self.hidden
+        )
+        assert lstm_out.shape == (
+            self.batch_size,
+            sequence_length,
+            self.lstm_hidden_dim)
+
+        # Only take the output from the final timestep
+        # Can pass on the entirety of lstm_out to the next layer if it is a
+        # seq2seq prediction
+        predicted_states = self.output_layers(lstm_out)
+        return predicted_states
+
+
 class PandaBaselineModel(nn.Module):
 
     def __init__(self, use_prev_state=True, units=32):
@@ -30,10 +139,18 @@ class PandaBaselineModel(nn.Module):
             resblocks.Linear(units // 2),
         )
         self.observation_image_layers = nn.Sequential(
-            nn.Conv2d(in_channels=1, out_channels=4, kernel_size=3, padding=1),
+            nn.Conv2d(
+                in_channels=1,
+                out_channels=4,
+                kernel_size=3,
+                padding=1),
             nn.ReLU(inplace=True),
             resblocks.Conv2d(channels=4),
-            nn.Conv2d(in_channels=4, out_channels=1, kernel_size=3, padding=1),
+            nn.Conv2d(
+                in_channels=4,
+                out_channels=1,
+                kernel_size=3,
+                padding=1),
             nn.ReLU(inplace=True),
             nn.Flatten(),  # 32 * 32 = 1024
             nn.Linear(1024, units),
@@ -77,7 +194,8 @@ class PandaBaselineModel(nn.Module):
             self.observation_image_layers(
                 observations['image'][:, np.newaxis, :, :]),
             self.observation_pose_layers(observations['gripper_pose']),
-            self.observation_sensors_layers(observations['gripper_sensors']),
+            self.observation_sensors_layers(
+                observations['gripper_sensors']),
         ), dim=1)
 
         # Construct control features
