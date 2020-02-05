@@ -60,7 +60,7 @@ class PandaLSTMModel(nn.Module):
         # Define the output layer
         self.output_layers = nn.Identity()
 
-    def reset_hidden(self, initial_states=None):
+    def reset_hidden_states(self, initial_states=None):
         self.hidden = (torch.zeros(self.lstm_num_layers, self.batch_size, self.lstm_hidden_dim),
                        torch.zeros(self.lstm_num_layers, self.batch_size, self.lstm_hidden_dim))
 
@@ -73,40 +73,38 @@ class PandaLSTMModel(nn.Module):
 
     def forward(self, observations):
         # Observations: key->value
-        # where shape of value is (seq_len, batch, *)
-        sequence_length = observations['image'].shape[0]
-        assert observations['image'].shape[1] == self.batch_size
-        assert observations['gripper_pose'].shape[0] == sequence_length
-        assert observations['gripper_sensors'].shape[0] == sequence_length
+        # where shape of value is (batch, seq_len, *)
+        sequence_length = observations['image'].shape[1]
+        assert observations['image'].shape[0] == self.batch_size
+        assert observations['gripper_pose'].shape[1] == sequence_length
+        assert observations['gripper_sensors'].shape[1] == sequence_length
 
         # Forward pass through observation encoders
         image_features = self.observation_image_layers(
             observations['image'][:, :, np.newaxis, :, :].reshape(
                 sequence_length * self.batch_size, -1, self.image_rows, self.image_cols)
-        ).reshape((sequence_length, self.batch_size, self.units))
+        ).reshape((self.batch_size, sequence_length, self.units))
 
         observation_features = torch.cat((
             image_features,
             self.observation_pose_layers(observations['gripper_pose']),
             self.observation_sensors_layers(observations['gripper_sensors']),
         ), dim=-1)
+
         assert observation_features.shape == (
-            sequence_length, self.batch_size, self.units * 3)
+            self.batch_size, sequence_length, self.units * 3)
 
         fused_features = self.fusion_layers(observation_features)
+        assert fused_features.shape == (
+            self.batch_size, sequence_length, self.units)
 
         # Forward pass through LSTM layer
-        # shape of lstm_out: [input_size, batch_size, lstm_hidden_dim]
-        # shape of self.hidden: (a, b), where a and b both
-        # have shape (lstm_num_layers, batch_size, lstm_hidden_dim).
         lstm_out, self.hidden = self.lstm(
             fused_features,
             self.hidden
         )
         assert lstm_out.shape == (
-            self.batch_size,
-            sequence_length,
-            self.lstm_hidden_dim)
+            self.batch_size, sequence_length, self.lstm_hidden_dim)
 
         # Only take the output from the final timestep
         # Can pass on the entirety of lstm_out to the next layer if it is a

@@ -48,7 +48,6 @@ def train(buddy, model, dataloader, log_interval=10, state_noise_std=0.2):
                 buddy.log("Predicted pos mean", pred_mean[0])
                 # buddy.log("Predicted vel mean", pred_mean[1])
 
-
     print("Epoch loss:", np.mean(losses))
 
 
@@ -84,6 +83,43 @@ def rollout(model, trajectories, max_timesteps=300):
 
     predicted_states = np.array(predicted_states)
     actual_states = np.array(actual_states)
+    return predicted_states, actual_states
+
+
+def rollout_lstm(model, trajectories, max_timesteps=300):
+    timesteps = np.min([len(s) for s, _, _ in trajectories] + [max_timesteps])
+
+    orig_batch_size = model.batch_size
+
+    trajectory_count = len(trajectories)
+    model.batch_size = trajectory_count
+
+    state_dim = trajectories[0][0].shape[-1]
+    actual_states = np.zeros((trajectory_count, timesteps, state_dim))
+
+    batched_observations = {}
+
+    # Trajectories is a list of (states, observations, controls)
+    for i, (states, observations, _) in enumerate(trajectories):
+        states = states[:timesteps]
+        observations = utils.DictIterator(observations)[:timesteps]
+
+        utils.DictIterator(batched_observations).append(observations)
+
+        assert states.shape == (timesteps, state_dim)
+        actual_states[i] = states
+
+    utils.DictIterator(batched_observations).convert_to_numpy()
+
+    # Propagate through model
+    model.reset_hidden_states(utils.to_torch(actual_states[:, 0, :]))
+    device = next(model.parameters()).device
+    predicted_states = utils.to_numpy(model(utils.to_torch(batched_observations, device)))
+
+    # Reset model
+    model.batch_size = orig_batch_size
+
+    # Indexing: batch, sequence length, state
     return predicted_states, actual_states
 
 
