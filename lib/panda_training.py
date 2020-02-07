@@ -91,9 +91,7 @@ def train_measurement(buddy, pf_model, dataloader, log_interval=10):
     print("Epoch loss:", np.mean(losses))
 
 
-def train_e2e(buddy, pf_model, dataloader, log_interval=10, loss_type="gmm"):
-    losses = []
-
+def train_e2e(buddy, pf_model, dataloader, log_interval=2, loss_type="gmm"):
     # Train for 1 epoch
     for batch_idx, batch in enumerate(tqdm_notebook(dataloader)):
         # Transfer to GPU and pull out batch data
@@ -110,6 +108,8 @@ def train_e2e(buddy, pf_model, dataloader, log_interval=10, loss_type="gmm"):
         particles = batch_particles
         log_weights = torch.ones((N, M), device=buddy._device) * (-np.log(M))
 
+        # Accumulate losses from each timestep
+        losses = []
         for t in range(1, timesteps):
             prev_particles = particles
             prev_log_weights = log_weights
@@ -136,28 +136,28 @@ def train_e2e(buddy, pf_model, dataloader, log_interval=10, loss_type="gmm"):
             else:
                 assert False, "Invalid loss"
 
-            losses.append(utils.to_numpy(loss))
+            losses.append(loss)
 
             # assert state_estimates.shape == batch_states[:, t, :].shape
 
-            buddy.minimize(
-                loss,
-                optimizer_name="e2e",
-                checkpoint_interval=10000)
+        buddy.minimize(
+            torch.mean(torch.stack(losses)),
+            optimizer_name="e2e",
+            checkpoint_interval=10000)
 
-            # Disable backprop through time
-            particles = new_particles.detach()
-            log_weights = new_log_weights.detach()
+        # # Disable backprop through time
+        # particles = new_particles.detach()
+        # log_weights = new_log_weights.detach()
 
-            if buddy._steps % log_interval == 0:
-                with buddy.log_scope("e2e"):
-                    buddy.log("Training loss", loss)
-                    buddy.log("Log weights mean", log_weights.mean())
-                    buddy.log("Log weights std", log_weights.std())
-                    buddy.log("Particle states mean", particles.mean())
-                    buddy.log("particle states std", particles.std())
+        if buddy._steps % log_interval == 0:
+            with buddy.log_scope("e2e"):
+                buddy.log("Training loss", loss)
+                buddy.log("Log weights mean", log_weights.mean())
+                buddy.log("Log weights std", log_weights.std())
+                buddy.log("Particle states mean", particles.mean())
+                buddy.log("particle states std", particles.std())
 
-    print("Epoch loss:", np.mean(losses))
+    print("Epoch loss:", np.mean(utils.to_numpy(losses)))
 
 
 def rollout(pf_model, trajectories, start_time=0, max_timesteps=300,

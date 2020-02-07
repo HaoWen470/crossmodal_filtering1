@@ -61,8 +61,10 @@ class PandaLSTMModel(nn.Module):
         self.output_layers = nn.Identity()
 
     def reset_hidden_states(self, initial_states=None):
-        self.hidden = (torch.zeros(self.lstm_num_layers, self.batch_size, self.lstm_hidden_dim),
-                       torch.zeros(self.lstm_num_layers, self.batch_size, self.lstm_hidden_dim))
+        device = next(self.parameters()).device
+        shape = (self.lstm_num_layers, self.batch_size, self.lstm_hidden_dim)
+        self.hidden = (torch.zeros(shape, device=device),
+                       torch.zeros(shape, device=device))
 
         if initial_states is not None:
             assert initial_states.shape == (
