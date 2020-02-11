@@ -8,16 +8,23 @@ from fannypack.nn import resblocks
 from . import dpf
 
 
+class PandaParticleFilterNetwork(dpf.ParticleFilterNetwork):
+    def __init__(self, **kwargs):
+        dynamics_model = PandaSimpleDynamicsModel()
+        measurement_model = PandaMeasurementModel()
+        super().__init__(dynamics_model, measurement_model, **kwargs)
+
+
 class PandaSimpleDynamicsModel(dpf.DynamicsModel):
 
     # (x, y, cos theta, sin theta, mass, friction)
     default_state_noise_stddev = (
-        0.005, # x
-        0.005, # y
-        0.005, # cos theta
-        0.005, # sin theta
-        0, # mass
-        0, # friction
+        0.005,  # x
+        0.005,  # y
+        0,  # cos theta
+        0,  # sin theta
+        0,  # mass
+        0,  # friction
     )
 
     def __init__(self, state_noise_stddev=None):
@@ -59,7 +66,7 @@ class PandaSimpleDynamicsModel(dpf.DynamicsModel):
 
 class PandaMeasurementModel(dpf.MeasurementModel):
 
-    def __init__(self, units=16):
+    def __init__(self, units=32):
         super().__init__()
 
         obs_pos_dim = 3

@@ -56,7 +56,11 @@ def load_trajectories(*paths, use_vision=True,
                 # TODO: add mass, friction
                 state_dim = 6
                 states = np.zeros((timesteps, state_dim))
-                states[:4] = trajectory['Bread0_state'],  # x,y,cos,sin
+                states[:, :4] = trajectory['Bread0_state']  # x,y,cos,sin
+
+                # Zero out everything but XY position
+                # TODO: remove this
+                states[:, 2:] *= 0
 
                 # Pull out observations
                 ## This is currently consisted of:
@@ -165,8 +169,12 @@ class PandaDynamicsDataset(torch.utils.data.Dataset):
 class PandaMeasurementDataset(torch.utils.data.Dataset):
     """A customized data preprocessor for trajectories
     """
+    # (x, y, cos theta, sin theta, mass, friction)
+    # TODO: fix default variances for mass, friction
+    # default_stddev = (0.015, 0.015, 1e-4, 1e-4, 1e-4, 1e-4)
+    default_stddev = (0.015, 0.015, 0.015, 0.015, 0.015, 0.015)
 
-    def __init__(self, *paths, std_dev=0.015, samples_per_pair=20, **kwargs):
+    def __init__(self, *paths, stddev=None, samples_per_pair=20, **kwargs):
         """
         Args:
           *paths: paths to dataset hdf5 files
@@ -174,7 +182,9 @@ class PandaMeasurementDataset(torch.utils.data.Dataset):
 
         trajectories = load_trajectories(*paths, **kwargs)
 
-        self.std_dev = np.array(std_dev)
+        if stddev is None:
+            stddev = self.default_stddev
+        self.stddev = np.array(stddev)
         self.samples_per_pair = samples_per_pair
         self.dataset = []
         for i, trajectory in enumerate(tqdm_notebook(trajectories)):
@@ -203,21 +213,21 @@ class PandaMeasurementDataset(torch.utils.data.Dataset):
 
         state, observation = self.dataset[index // self.samples_per_pair]
 
-        assert self.std_dev.shape == state.shape
+        assert self.stddev.shape == state.shape
 
         # Generate half of our samples close to the mean, and the other half
         # far away
         if index % self.samples_per_pair < self.samples_per_pair * 0.5:
             noisy_state = state + \
                 np.random.normal(
-                    loc=0., scale=self.std_dev, size=state.shape)
+                    loc=0., scale=self.stddev, size=state.shape)
         else:
             noisy_state = state + \
                 np.random.normal(
-                    loc=0., scale=self.std_dev * 10, size=state.shape)
+                    loc=0., scale=self.stddev * 10, size=state.shape)
 
         log_likelihood = np.asarray(scipy.stats.multivariate_normal.logpdf(
-            noisy_state, mean=state, cov=np.diag(self.std_dev ** 2)))
+            noisy_state[:2], mean=state[:2], cov=np.diag(self.stddev[:2] ** 2)))
 
         return utils.to_torch((noisy_state, observation, log_likelihood))
 

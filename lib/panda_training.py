@@ -34,7 +34,7 @@ def train_dynamics(buddy, pf_model, dataloader, log_interval=10):
             optimizer_name="dynamics",
             checkpoint_interval=10000)
 
-        if buddy._steps % log_interval == 0:
+        if buddy.optimizer_steps % log_interval == 0:
             with buddy.log_scope("dynamics"):
                 # buddy.log("Training loss", loss)
                 buddy.log("MSE position", mse_pos)
@@ -78,7 +78,7 @@ def train_measurement(buddy, pf_model, dataloader, log_interval=10):
             optimizer_name="measurement",
             checkpoint_interval=10000)
 
-        if buddy._steps % log_interval == 0:
+        if buddy.optimizer_steps % log_interval == 0:
             with buddy.log_scope("measurement"):
                 buddy.log("Training loss", loss)
 
@@ -149,7 +149,7 @@ def train_e2e(buddy, pf_model, dataloader, log_interval=2, loss_type="gmm"):
         # particles = new_particles.detach()
         # log_weights = new_log_weights.detach()
 
-        if buddy._steps % log_interval == 0:
+        if buddy.optimizer_steps % log_interval == 0:
             with buddy.log_scope("e2e"):
                 buddy.log("Training loss", loss)
                 buddy.log("Log weights mean", log_weights.mean())
@@ -254,8 +254,10 @@ def eval_rollout(predicted_states, actual_states, plot=False):
             plt.legend()
             plt.show()
 
-    print("X RMSE: ", np.sqrt(np.mean((predicted_states[:, :, 0] - actual_states[:, :, 0])**2)))
-    print("Y RMSE: ", np.sqrt(np.mean((predicted_states[:, :, 1] - actual_states[:, :, 1])**2)))
+    print("X RMSE: ", np.sqrt(
+        np.mean((predicted_states[:, :, 0] - actual_states[:, :, 0])**2)))
+    print("Y RMSE: ", np.sqrt(
+        np.mean((predicted_states[:, :, 1] - actual_states[:, :, 1])**2)))
 
     # predicted_angles = np.arctan2(predicted_states[:, :, 3], predicted_states[:, :, 2])
     # actual_angles = np.arctan2(actual_states[:, :, 3], actual_states[:, :, 2])
