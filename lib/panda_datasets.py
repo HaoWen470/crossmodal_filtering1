@@ -33,6 +33,7 @@ def load_trajectories(*paths, use_vision=True,
             for i, trajectory in enumerate(f):
                 if i >= count:
                     break
+
                 # # Possible keys:
                 # 'eef_pos',
                 # 'eef_quat',
@@ -48,20 +49,24 @@ def load_trajectories(*paths, use_vision=True,
                 # 'image',
                 # 'Bread0_state'
 
-                # Pull out trajectory states -- this contains (x,y,cos theta,
-                # sin theta) of the bread
-                states = trajectory['Bread0_state']
+                timesteps = len(utils.DictIterator(trajectory))
 
-                # TODO: temporary, remove
-                states = states[:,:2]
+                # Define our state:  we expect this to be:
+                # (x, y, cos theta, sin theta, mass, friction)
+                # TODO: add mass, friction
+                state_dim = 6
+                states = np.zeros((timesteps, state_dim))
+                states[:4] = trajectory['Bread0_state'],  # x,y,cos,sin
 
-                # Pull out observation states
+                # Pull out observations
+                ## This is currently consisted of:
+                ## > gripper_pos: end effector position
+                ## > gripper_sensors: F/T, contact sensors
+                ## > image: camera image
+
                 observations = {}
-                observations['gripper_pose'] = np.concatenate((
-                    trajectory['eef_pos'],
-                    trajectory['eef_quat'],
-                ), axis=1)
-                assert observations['gripper_pose'].shape[1] == 7
+                observations['gripper_pos'] = trajectory['eef_pos']
+                assert observations['gripper_pos'].shape == (timesteps, 3)
 
                 observations['gripper_sensors'] = np.concatenate((
                     trajectory['force'],
@@ -70,7 +75,7 @@ def load_trajectories(*paths, use_vision=True,
                 assert observations['gripper_sensors'].shape[1] == 7
 
                 if not use_proprioception:
-                    observations['gripper_pose'][:] = 0
+                    observations['gripper_pos'][:] = 0
                 if not use_haptics:
                     observations['gripper_sensors'][:] = 0
 
@@ -81,29 +86,18 @@ def load_trajectories(*paths, use_vision=True,
                         index = min(index, len(observations['image']))
                         observations['image'][i] = trajectory['image'][index]
 
-                ## TODO: control stuff needs to be fixed probably
-                # Pull out control states
-                control_keys = [
-                    'eef_pos', # 3
-                    'eef_quat', # 7
-                    'force', # 6
-                    'contact' # 1
-                ]
-                controls = []
-                for key in control_keys:
-                    control = trajectory[key]
-                    if len(control.shape) == 1:
-                        control = control[:, np.newaxis]
-                    assert len(control.shape) == 2
-                    controls.append(control)
-                controls = np.concatenate(controls, axis=1)
-
-                if not use_proprioception:
-                    controls[:] = 0
-
-                timesteps = len(states)
-                assert len(controls) == timesteps
-                assert len(observations['image']) == timesteps
+                # Pull out controls
+                ## This is currently consisted of:
+                ## > end effector position delta
+                ## > binary contact reading
+                eef_positions = trajectory['eef_pos']
+                eef_positions_shifted = np.roll(eef_positions, shift=1)
+                eef_positions_shifted[0] = eef_positions[0]
+                controls = np.concatenate([
+                    eef_positions - eef_positions_shifted,
+                    trajectory['contact'][:, np.newaxis],
+                ], axis=1)
+                assert controls.shape == (timesteps, 4)
 
                 trajectories.append((states, observations, controls))
 
@@ -111,8 +105,7 @@ def load_trajectories(*paths, use_vision=True,
 
 
 class PandaDynamicsDataset(torch.utils.data.Dataset):
-    """
-    A customized data preprocessor for trajectories
+    """A customized data preprocessor for trajectories
     """
 
     def __init__(self, *paths, **kwargs):
@@ -170,13 +163,12 @@ class PandaDynamicsDataset(torch.utils.data.Dataset):
 
 
 class PandaMeasurementDataset(torch.utils.data.Dataset):
-    """
-    A customized data preprocessor for trajectories
+    """A customized data preprocessor for trajectories
     """
 
     def __init__(self, *paths, std_dev=0.1, samples_per_pair=20, **kwargs):
         """
-        Input:
+        Args:
           *paths: paths to dataset hdf5 files
         """
 
@@ -204,7 +196,8 @@ class PandaMeasurementDataset(torch.utils.data.Dataset):
 
     def __getitem__(self, index):
         """ Get a subsequence from our dataset
-        Output:
+
+        Returns:
             sample: (prev_state, observation, control, new_state)
         """
 
@@ -212,6 +205,8 @@ class PandaMeasurementDataset(torch.utils.data.Dataset):
 
         assert self.std_dev.shape == state.shape
 
+        # Generate half of our samples close to the mean, and the other half
+        # far away
         if index % self.samples_per_pair < self.samples_per_pair * 0.5:
             noisy_state = state + \
                 np.random.normal(
@@ -234,13 +229,15 @@ class PandaMeasurementDataset(torch.utils.data.Dataset):
 
 
 class PandaParticleFilterDataset(dpf.ParticleFilterDataset):
-    default_particle_variances = [0.1, 0.1]
+    # (x, y, cos theta, sin theta, mass, friction)
+    # TODO: fix default variances for mass, friction
+    default_particle_variances = [0.02, 0.02, 0.1, 0.1, 0, 0]
     default_subsequence_length = 20
     default_particle_count = 100
 
     def __init__(self, *paths, **kwargs):
         """
-        Input:
+        Args:
           *paths: paths to dataset hdf5 files
         """
 
