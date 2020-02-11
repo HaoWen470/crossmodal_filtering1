@@ -10,10 +10,23 @@ from . import dpf
 
 class PandaSimpleDynamicsModel(dpf.DynamicsModel):
 
-    def __init__(self, state_noise=(0.05, 0.05)):
+    # (x, y, cos theta, sin theta, mass, friction)
+    default_state_noise_stddev = (
+        0.005, # x
+        0.005, # y
+        0.005, # cos theta
+        0.005, # sin theta
+        0, # mass
+        0, # friction
+    )
+
+    def __init__(self, state_noise_stddev=None):
         super().__init__()
 
-        self.state_noise = state_noise
+        if state_noise_stddev is not None:
+            self.state_noise_stddev = state_noise_stddev
+        else:
+            self.state_noise_stddev = self.default_state_noise_stddev
 
     def forward(self, states_prev, controls, noisy=False):
         # states_prev:  (N, M, state_dim)
@@ -24,14 +37,14 @@ class PandaSimpleDynamicsModel(dpf.DynamicsModel):
         # N := distinct trajectory count
         # M := particle count
         N, M, state_dim = states_prev.shape
-        assert state_dim == len(self.state_noise)
+        assert state_dim == len(self.state_noise_stddev)
 
         states_new = states_prev
 
         # Add noise if desired
         if noisy:
             dist = torch.distributions.Normal(
-                torch.tensor([0.]), torch.tensor(self.state_noise))
+                torch.tensor([0.]), torch.tensor(self.state_noise_stddev))
             noise = dist.sample((N, M)).to(states_new.device)
             assert noise.shape == (N, M, state_dim)
             states_new = states_new + noise
@@ -49,9 +62,9 @@ class PandaMeasurementModel(dpf.MeasurementModel):
     def __init__(self, units=16):
         super().__init__()
 
-        obs_pose_dim = 7
+        obs_pos_dim = 3
         obs_sensors_dim = 7
-        state_dim = 2
+        state_dim = 6
 
         self.observation_image_layers = nn.Sequential(
             nn.Conv2d(in_channels=1, out_channels=3, kernel_size=3, padding=1),
@@ -64,8 +77,8 @@ class PandaMeasurementModel(dpf.MeasurementModel):
             nn.ReLU(inplace=True),
             resblocks.Linear(units),
         )
-        self.observation_pose_layers = nn.Sequential(
-            nn.Linear(obs_pose_dim, units),
+        self.observation_pos_layers = nn.Sequential(
+            nn.Linear(obs_pos_dim, units),
             resblocks.Linear(units),
         )
         self.observation_sensors_layers = nn.Sequential(
@@ -101,7 +114,7 @@ class PandaMeasurementModel(dpf.MeasurementModel):
         observation_features = torch.cat((
             self.observation_image_layers(
                 observations['image'][:, np.newaxis, :, :]),
-            self.observation_pose_layers(observations['gripper_pose']),
+            self.observation_pos_layers(observations['gripper_pos']),
             self.observation_sensors_layers(
                 observations['gripper_sensors']),
         ), dim=1)
