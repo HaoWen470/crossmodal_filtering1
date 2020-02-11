@@ -21,10 +21,10 @@ class PandaSimpleDynamicsModel(dpf.DynamicsModel):
     default_state_noise_stddev = (
         0.005,  # x
         0.005,  # y
-        0,  # cos theta
-        0,  # sin theta
-        0,  # mass
-        0,  # friction
+        1e-10,  # cos theta
+        1e-10,  # sin theta
+        1e-10,  # mass
+        1e-10,  # friction
     )
 
     def __init__(self, state_noise_stddev=None):

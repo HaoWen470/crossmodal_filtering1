@@ -127,7 +127,7 @@ class ParticleFilterDataset(torch.utils.data.Dataset):
                 subsequences.append((s, o, c))
 
         # Set properties
-        self.particle_stddev = particle_variances
+        self.particle_stddev = particle_stddev
         self.particle_count = particle_count
         self.subsequences = subsequences
 

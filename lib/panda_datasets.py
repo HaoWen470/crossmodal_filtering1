@@ -241,7 +241,7 @@ class PandaMeasurementDataset(torch.utils.data.Dataset):
 class PandaParticleFilterDataset(dpf.ParticleFilterDataset):
     # (x, y, cos theta, sin theta, mass, friction)
     # TODO: fix default variances for mass, friction
-    default_particle_variances = [0.02, 0.02, 0.1, 0.1, 0, 0]
+    default_particle_stddev = [0.02, 0.02, 0.1, 0.1, 0, 0]
     default_subsequence_length = 20
     default_particle_count = 100
 
