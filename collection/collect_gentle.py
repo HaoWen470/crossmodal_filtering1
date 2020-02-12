@@ -1,5 +1,6 @@
 import argparse
 import numpy as np
+import enum
 
 import robosuite
 import robosuite.utils.transform_utils as T
@@ -68,40 +69,50 @@ if __name__ == "__main__":
         # elif env.mujoco_robot.name == 'panda':
         #     env.set_robot_joint_positions(env.mujoco_robot.init_qpos + [0, 0, 0, 0, 0, 0, np.pi])
 
-        while True:
-            if count == args.reset_count:
-                break
+        class State(enum.Enum):
+            INIT = 1
+            MOVE = 2
+            PUSH = 3
 
-            # convert into a suitable end effector action for the environment
-            current = env._right_hand_orn
+        state = State.INIT
+        grasp = -1
 
-            # relative rotation of desired from current
-            # drotation = current.T.dot(rotation)
-            # dquat = T.mat2quat(drotation)
+        for _ in range(250):
 
-            # map 0 to -1 (open) and 1 to 0 (closed halfway)
-            grasp = grasp - 1
+            if state == State.INIT:
+                target_object_pos = env.sim.data.body_xpos[objs_to_reach]
 
-            # todo: for a few steps go to a different pose!
-            target_object_pos = env.sim.data.body_xpos[objs_to_reach]
+                # Start moving immediately
+                state = state.MOVE
 
-            while np.abs(env.ee_pos[2] - target_object_pos[2]) > 0.02:
+            # Move to object
+            if state == state.MOVE:
                 dpos = target_object_pos - env.ee_pos[:3]
                 dpos[:2] = np.zeros(2)
-                action = np.concatenate([dpos, [grasp]])
-                obs, reward, done, info = env.step(action)
-                env.render()
 
-            for i in range(push_count):
+                # Start pushing if close to object
+                if np.abs(env.ee_pos[2] - target_object_pos[2]) <= 0.02:
+                    state = state.PUSH
+                    push_counter = 0
+
+            # Push object
+            elif state == state.PUSH:
                 target_object_pos = env.sim.data.body_xpos[objs_to_reach]
-                dpos = target_object_pos - env.ee_pos[:3]
-                action = np.concatenate([dpos * 3, [grasp]])
-                obs, reward, done, info = env.step(action)
-                env.render()
+                dpos = (target_object_pos - env.ee_pos[:3]) * 3.
 
-                if env.not_in_big_bin(target_object_pos):
-                    print("not in big bin!")
-                    env.reset()
+                # Counter-based push stop condition
+                push_counter += 1
+                if push_counter >= push_count:
+                    state = State.INIT
+
+            action = np.concatenate([dpos, [grasp]])
+            obs, reward, done, info = env.step(action)
+            env.render()
+
+            if env.not_in_big_bin(target_object_pos):
+                print("not in big bin!", _)
+                env.reset()
+
 
             # ee_pose_new_loc = env.ee_pos[:3] + np.random.normal(0.0, 0.05, dpos.shape)
 
