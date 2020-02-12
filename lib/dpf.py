@@ -54,16 +54,16 @@ def gmm_loss(particles_states, log_weights, true_states, gmm_variances=1.):
 
 
 class ParticleFilterDataset(torch.utils.data.Dataset):
-    default_particle_variances = 1.
+    default_particle_stddev = 1.
     default_subsequence_length = 20
-    default_particle_count = 200
+    default_particle_count = 100
 
     """
     A data preprocessor for producing particle sets from trajectories
     """
 
     def __init__(self, trajectories, subsequence_length=None,
-                 particle_count=None, particle_variances=None, **unused):
+                 particle_count=None, particle_stddev=None, **unused):
         """ Initialize the dataset. We chop our list of trajectories into a set of subsequences.
         Input:
           trajectories: list of trajectories, where each is a tuple of (states, observations, controls)
@@ -76,19 +76,19 @@ class ParticleFilterDataset(torch.utils.data.Dataset):
             subsequence_length = self.default_subsequence_length
         if particle_count is None:
             particle_count = self.default_particle_count
-        if particle_variances is None:
-            if type(self.default_particle_variances) in (tuple, list):
-                particle_variances = self.default_particle_variances
-            elif type(self.default_particle_variances) == float:
-                particle_variances = [
-                    self.default_particle_variances] * state_dim
+        if particle_stddev is None:
+            if type(self.default_particle_stddev) in (tuple, list):
+                particle_stddev = self.default_particle_stddev
+            elif type(self.default_particle_stddev) == float:
+                particle_stddev = [
+                    self.default_particle_stddev] * state_dim
             else:
                 assert False, "Invalid default particle variances!"
 
         # Sanity checks
         assert subsequence_length >= 2
         assert particle_count > 0
-        assert len(particle_variances) == state_dim
+        assert len(particle_stddev) == state_dim
 
         # Chop up each trajectory into overlapping subsequences
         subsequences = []
@@ -127,7 +127,7 @@ class ParticleFilterDataset(torch.utils.data.Dataset):
                 subsequences.append((s, o, c))
 
         # Set properties
-        self.particle_variances = particle_variances
+        self.particle_stddev = particle_stddev
         self.particle_count = particle_count
         self.subsequences = subsequences
 
@@ -141,14 +141,14 @@ class ParticleFilterDataset(torch.utils.data.Dataset):
         initial_state = states[0]
 
         # Generate noisy states as initial particles
+        center = np.random.normal(
+            loc=0.,
+            scale=np.asarray(self.particle_stddev) / 2
+        ).astype(np.float32)
+
         n = torch.distributions.Normal(
-            torch.tensor(
-                np.random.normal(
-                    loc=0.,
-                    scale=np.sqrt(np.asarray(self.particle_variances) / 2)
-                ).astype(np.float32)
-            ),
-            torch.tensor(self.particle_variances)
+            torch.tensor(center),
+            torch.tensor(self.particle_stddev)
         )
 
         initial_particles = n.sample((self.particle_count, ))
