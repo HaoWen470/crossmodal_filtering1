@@ -10,7 +10,7 @@ class PandaLSTMModel(nn.Module):
 
     def __init__(self, batch_size, units=32):
 
-        obs_pose_dim = 7
+        obs_pos_dim = 3
         obs_sensors_dim = 7
         state_dim = 2
 
@@ -35,7 +35,7 @@ class PandaLSTMModel(nn.Module):
             resblocks.Linear(units),
         )
         self.observation_pose_layers = nn.Sequential(
-            nn.Linear(obs_pose_dim, units),
+            nn.Linear(obs_pos_dim, units),
             resblocks.Linear(units),
         )
         self.observation_sensors_layers = nn.Sequential(
@@ -78,7 +78,7 @@ class PandaLSTMModel(nn.Module):
         # where shape of value is (batch, seq_len, *)
         sequence_length = observations['image'].shape[1]
         assert observations['image'].shape[0] == self.batch_size
-        assert observations['gripper_pose'].shape[1] == sequence_length
+        assert observations['gripper_pos'].shape[1] == sequence_length
         assert observations['gripper_sensors'].shape[1] == sequence_length
 
         # Forward pass through observation encoders
@@ -89,7 +89,7 @@ class PandaLSTMModel(nn.Module):
 
         observation_features = torch.cat((
             image_features,
-            self.observation_pose_layers(observations['gripper_pose']),
+            self.observation_pose_layers(observations['gripper_pos']),
             self.observation_sensors_layers(observations['gripper_sensors']),
         ), dim=-1)
 
@@ -123,7 +123,7 @@ class PandaBaselineModel(nn.Module):
         self.use_prev_state = use_prev_state
         self.units = units
 
-        obs_pose_dim = 7
+        obs_pos_dim = 7
         obs_sensors_dim = 7
         state_dim = 2
         control_dim = 14
@@ -158,7 +158,7 @@ class PandaBaselineModel(nn.Module):
             resblocks.Linear(units),
         )
         self.observation_pose_layers = nn.Sequential(
-            nn.Linear(obs_pose_dim, units),
+            nn.Linear(obs_pos_dim, units),
             resblocks.Linear(units),
         )
         self.observation_sensors_layers = nn.Sequential(
