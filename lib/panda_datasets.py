@@ -220,8 +220,6 @@ class PandaMeasurementDataset(torch.utils.data.Dataset):
 
                 self.dataset.append((state, observation))
 
-        states -= np.mean(states, axis=0, keepdims=True)
-
         print("Loaded {} points".format(len(self.dataset)))
 
     def __getitem__(self, index):
