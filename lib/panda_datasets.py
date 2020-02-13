@@ -8,6 +8,33 @@ from fannypack import utils
 from . import dpf
 
 
+# ['image'
+# 'depth'
+# 'proprio'
+# 'joint_pos'
+# 'joint_vel'
+# 'gripper_qpos'
+# 'gripper_qvel'
+# 'eef_pos'
+# 'eef_quat'
+# 'eef_vlin'
+# 'eef_vang'
+# 'force'
+# 'force_hi_freq'
+# 'contact'
+# 'robot-state'
+# 'prev-act'
+# 'Cylinder0_pos'
+# 'Cylinder0_quat'
+# 'Cylinder0_to_eef_pos'
+# 'Cylinder0_to_eef_quat'
+# 'Cylinder0_mass'
+# 'Cylinder0_friction'
+# 'object-state'
+# 'action'
+# 'object_z_angle'])
+
+
 def load_trajectories(*paths, use_vision=True,
                       vision_interval=10, use_proprioception=True, use_haptics=True, **unused):
     """
@@ -34,29 +61,19 @@ def load_trajectories(*paths, use_vision=True,
                 if i >= count:
                     break
 
-                # # Possible keys:
-                # 'eef_pos',
-                # 'eef_quat',
-                # 'eef_vlin',
-                # 'eef_vang',
-                # 'force',
-                # 'force_hi_freq',
-                # 'contact',
-                # 'Bread0_pos',
-                # 'Bread0_quat',
-                # 'Bread0_to_eef_pos',
-                # 'Bread0_to_eef_quat',
-                # 'image',
-                # 'Bread0_state'
-
                 timesteps = len(utils.DictIterator(trajectory))
 
                 # Define our state:  we expect this to be:
                 # (x, y, cos theta, sin theta, mass, friction)
                 # TODO: add mass, friction
-                state_dim = 6
-                states = np.zeros((timesteps, state_dim))
-                states[:, :4] = trajectory['Bread0_state']  # x,y,cos,sin
+                state_dim = 2
+                states = np.full((timesteps, state_dim), np.nan)
+
+                states[:, :2] = trajectory['Cylinder0_pos'][:, :2]  # x, y
+                # states[:, 2] = np.cos(trajectory['object_z_angle'])
+                # states[:, 3] = np.sin(trajectory['object_z_angle'])
+                # states[:, 4] = trajectory['Cylinder0_mass'][:, 0]
+                # states[:, 5] = trajectory['Cylinder0_friction'][:, 0]
 
                 # Zero out everything but XY position
                 # TODO: remove this
@@ -105,6 +122,7 @@ def load_trajectories(*paths, use_vision=True,
 
                 trajectories.append((states, observations, controls))
 
+    print(states)
     return trajectories
 
 
@@ -172,7 +190,7 @@ class PandaMeasurementDataset(torch.utils.data.Dataset):
     # (x, y, cos theta, sin theta, mass, friction)
     # TODO: fix default variances for mass, friction
     # default_stddev = (0.015, 0.015, 1e-4, 1e-4, 1e-4, 1e-4)
-    default_stddev = (0.015, 0.015, 0.015, 0.015, 0.015, 0.015)
+    default_stddev = (0.005, 0.005) #, 0.015, 0.015, 0.015, 0.015)
 
     def __init__(self, *paths, stddev=None, samples_per_pair=20, **kwargs):
         """
@@ -201,6 +219,8 @@ class PandaMeasurementDataset(torch.utils.data.Dataset):
                 observation = utils.DictIterator(observations)[t]
 
                 self.dataset.append((state, observation))
+
+        states -= np.mean(states, axis=0, keepdims=True)
 
         print("Loaded {} points".format(len(self.dataset)))
 
@@ -241,7 +261,7 @@ class PandaMeasurementDataset(torch.utils.data.Dataset):
 class PandaParticleFilterDataset(dpf.ParticleFilterDataset):
     # (x, y, cos theta, sin theta, mass, friction)
     # TODO: fix default variances for mass, friction
-    default_particle_stddev = [0.02, 0.02, 0.1, 0.1, 0, 0]
+    default_particle_stddev = [0.02, 0.02]#, 0.1, 0.1, 0, 0]
     default_subsequence_length = 20
     default_particle_count = 100
 

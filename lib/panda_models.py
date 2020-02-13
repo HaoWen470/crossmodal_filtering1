@@ -71,7 +71,7 @@ class PandaMeasurementModel(dpf.MeasurementModel):
 
         obs_pos_dim = 3
         obs_sensors_dim = 7
-        state_dim = 6
+        state_dim = 2
 
         self.observation_image_layers = nn.Sequential(
             nn.Conv2d(in_channels=1, out_channels=3, kernel_size=3, padding=1),
