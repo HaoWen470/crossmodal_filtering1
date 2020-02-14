@@ -5,19 +5,72 @@ import torch.nn.functional as F
 
 from fannypack.nn import resblocks
 
-from multimodal_dpf2.lib.panda_models import PandaSimpleDynamicsModel
-from multimodal_dpf2.lib import ekf
+from lib.panda_models import PandaSimpleDynamicsModel
+from lib import ekf
 
 class PandaEKFDynamicsModel(PandaSimpleDynamicsModel):
     """
     Using same dynamics model as DPF
     todo: make an overall class for forward dynamics model :)
     """
-    def __init__(self, state_noise_stddev=None):
+     # (x, y, cos theta, sin theta, mass, friction)
+    default_state_noise_stddev = [
+        0.005,  # x
+        0.005,  # y
+        1e-10,  # cos theta
+        1e-10,  # sin theta
+        1e-10,  # mass
+        1e-10,  # friction
+    ]
+
+    def __init__(self, state_dim = 2, state_noise_stddev=None):
         super().__init__()
-        self.Q = torch.diag(self.state_noise_stddev)
+        self.state_dim = state_dim
 
+        if state_noise_stddev is not None:
+            assert len(state_noise_stddev) == self.state_dim
+            self.state_noise_stddev = state_noise_stddev
+        else:
+            self.state_noise_stddev = np.array(self.default_state_noise_stddev[:self.state_dim])
+        self.layer = nn.Sequential(
+            nn.Linear(self.state_dim, self.state_dim),
+            nn.ReLU(inplace=True),
+            resblocks.Linear(self.state_dim),
+            resblocks.Linear(self.state_dim),
+        )
+        
+        self.Q = torch.from_numpy(np.diag(self.state_noise_stddev))
 
+    def forward(self, states_prev, controls, noisy=False):
+        # states_prev:  (N, state_dim)
+        # controls: (N, control_dim)
+
+        # assert len(states_prev.shape) == 2  # (N, state_dim)
+
+        # N := distinct trajectory count
+        if len(states_prev.shape) > 2:
+            N, _, state_dim = states_prev.shape
+        else:
+            N, state_dim = states_prev.shape
+        assert state_dim == len(self.state_noise_stddev)
+
+        #todo: add controls!
+        states_new = self.layer(states_prev)
+
+        # Add noise if desired
+        if noisy:
+            dist = torch.distributions.Normal(
+                torch.tensor([0.]), torch.Tensor(self.state_noise_stddev), )
+            noise = dist.sample((N,)).to(states_new.device)
+            assert noise.shape == (N, state_dim)
+            states_new = states_new + noise
+
+#             # Project to valid cosine/sine space
+#             scale = torch.norm(states_new[:, 2:4], keepdim=True)
+#             states_new[:, :, 2:4] /= scale
+
+        # Return (N, state_dim)
+        return states_new
 
 class PandaEKFMeasurementModel(ekf.KFMeasurementModel):
     """
@@ -28,7 +81,7 @@ class PandaEKFMeasurementModel(ekf.KFMeasurementModel):
     def __init__(self, units=16, state_dim=2):
         super().__init__()
 
-        obs_pose_dim = 7
+        obs_pose_dim = 3
         obs_sensors_dim = 7
         self.state_dim = state_dim
 
@@ -56,7 +109,7 @@ class PandaEKFMeasurementModel(ekf.KFMeasurementModel):
         )
 
         self.shared_layers = nn.Sequential(
-            nn.Linear(units * 4, 2*units),
+            nn.Linear(units * 3, units * 2),
             nn.ReLU(inplace=True),
             resblocks.Linear(2*units),
             resblocks.Linear(2*units),
@@ -64,57 +117,55 @@ class PandaEKFMeasurementModel(ekf.KFMeasurementModel):
 
         self.r_layer = nn.Sequential(
             nn.Linear(units, self.state_dim),
-            nn.ReLu(inplace=True),
+            nn.ReLU(inplace=True),
             resblocks.Linear(self.state_dim),
         )
 
         self.z_layer = nn.Sequential(
             nn.Linear(units, self.state_dim),
-            nn.ReLu(inplace=True),
+            nn.ReLU(inplace=True),
             resblocks.Linear(self.state_dim),
         )
 
         self.units = units
 
-    def forward(self, observations, states):
+    def forward(self, observations):
         assert type(observations) == dict
-        assert len(states.shape) == 2  # (N, state_dim)
 
         # N := distinct trajectory count (batch size)
 
-        N, state_dim = states.shape
-        assert state_dim == self.state_dim
+        N = observations['image'].shape[0]
 
         # Construct observations feature vector
         # (N, obs_dim)
         observation_features = torch.cat((
             self.observation_image_layers(
                 observations['image'][:, np.newaxis, :, :]),
-            self.observation_pose_layers(observations['gripper_pose']),
+            self.observation_pose_layers(observations['gripper_pos']),
             self.observation_sensors_layers(
                 observations['gripper_sensors']),
         ), dim=1)
 
         assert observation_features.shape == (N, self.units * 3)
 
-        # (N, state_dim) => (N, units)
-        state_features = self.state_layers(states)
-        assert state_features.shape == (N, self.units)
+        # # (N, state_dim) => (N, units)
+        # state_features = self.state_layers(states)
+        # assert state_features.shape == (N, self.units)
 
-        # (N, units)
-        merged_features = torch.cat(
-            (observation_features, state_features),
-            dim=1)
-        assert merged_features.shape == (N, self.units * 4)
+        # # (N, units)
+        # merged_features = torch.cat(
+        #     (observation_features, state_features),
+        #     dim=1)
+        # assert merged_features.shape == (N, self.units * 4)
 
-        shared_features = self.shared_layers(merged_features)
+        shared_features = self.shared_layers(observation_features)
         assert shared_features.shape == (N, self.units * 2)
 
-        z = self.z_layer(shared_features[:self.units])
+        z = self.z_layer(shared_features[:, :self.units])
         assert z.shape == (N, self.state_dim)
 
-        lt_hat = self.r_layer(shared_features[self.units:])
-        lt = torch.diag(lt_hat)
+        lt_hat = self.r_layer(shared_features[:, self.units:])
+        lt = torch.diag_embed(lt_hat, offset=0, dim1=-2, dim2=-1)
         assert lt.shape == (N, self.state_dim, self.state_dim)
 
         R = lt @ lt.transpose(1, 2)

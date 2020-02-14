@@ -247,7 +247,7 @@ class PandaMeasurementDataset(torch.utils.data.Dataset):
         log_likelihood = np.asarray(scipy.stats.multivariate_normal.logpdf(
             noisy_state[:2], mean=state[:2], cov=np.diag(self.stddev[:2] ** 2)))
 
-        return utils.to_torch((noisy_state, observation, log_likelihood))
+        return utils.to_torch((noisy_state, observation, log_likelihood, state))
 
     def __len__(self):
         """
