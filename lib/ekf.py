@@ -27,7 +27,9 @@ class KalmanFilterNetwork(nn.Module):
         self.freeze_measurement_model = False
 
     def get_jacobian(self, net, x, noutputs, batch, controls, output_dim=0):
+        x = x.detach().clone()
         x = x.squeeze()
+
         n = x.size()[0]
         x = x.unsqueeze(1)
         x = x.repeat(1, noutputs, 1)
@@ -49,7 +51,6 @@ class KalmanFilterNetwork(nn.Module):
         # controls: (N, *)
         #
         # N := distinct trajectory count
-        print("forward calls")
 
         N, state_dim = states_prev.shape
 
@@ -74,9 +75,6 @@ class KalmanFilterNetwork(nn.Module):
 
         #Kalman Gain
         K_update = torch.bmm(states_sigma_pred, torch.inverse(states_sigma_pred + R))
-
-        print(K_update.shape)
-        print(torch.unsqueeze(z-states_pred,-1).shape)
 
         #Updating
         states_update = torch.unsqueeze(states_pred,-1) + torch.bmm(K_update, torch.unsqueeze(z-states_pred,-1))
