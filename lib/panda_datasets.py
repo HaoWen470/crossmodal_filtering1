@@ -109,21 +109,71 @@ def load_trajectories(*paths, use_vision=True,
 
                 # Pull out controls
                 ## This is currently consisted of:
+                ## > previous end effector position
                 ## > end effector position delta
                 ## > binary contact reading
                 eef_positions = trajectory['eef_pos']
-                eef_positions_shifted = np.roll(eef_positions, shift=1)
-                eef_positions_shifted[0] = eef_positions[0]
+                eef_positions_shifted = np.roll(eef_positions, shift=-1)
+                eef_positions_shifted[-1] = eef_positions[-1]
                 controls = np.concatenate([
+                    eef_positions_shifted,
                     eef_positions - eef_positions_shifted,
                     trajectory['contact'][:, np.newaxis],
                 ], axis=1)
-                assert controls.shape == (timesteps, 4)
+                assert controls.shape == (timesteps, 7)
 
-                trajectories.append((states, observations, controls))
+                # Normalization
+                observations['gripper_pos'] -= np.array([[0.455967, - 0.01341514, 0.880639]])
+                observations['gripper_pos'] /= np.array(
+                    [[0.00735019, 0.02312305, 0.03969879]])
+                observations['gripper_sensors'] -= np.array(
+                    [[-1.4395459e-01, 1.3516411e+00, -3.2150087e+00,
+                      -1.1090579e-01, -4.6001539e-02, 1.5583872e-03,
+                      2.4166666e-01]])
+                observations['gripper_sensors'] /= np.array(
+                    [[1.291729, 2.461422, 0.56859004, 0.20127113, 0.09833302,
+                      0.00823816, 0.42809328]])
+                states -= np.array([[0.4351026, -0.0721447]])
+                states /= np.array([[0.0050614, 0.01165088]])
+                controls -= np.array(
+                    [[-0.01127849, 0.87681806, 0.45754063, 0.46724555,
+                      -0.8902338, 0.42309874, 0.24166666]])
+                controls /= np.array(
+                    [[0.03666912, 0.07343381, 0.02567112,
+                      0.03398367, 0.06594761, 0.04507983, 0.42809328]])
 
-    print(states)
+            trajectories.append((states, observations, controls))
+
+    ## Uncomment this line to generate the lines required to normalize data
+    # _print_normalization(trajectories)
+
     return trajectories
+
+
+def _print_normalization(trajectories):
+    """ Helper for producing code to normalize inputs
+    """
+    states = []
+    observations = {}
+    controls = []
+    for t in trajectories:
+        states.extend(t[0])
+        utils.DictIterator(observations).extend(t[1])
+        controls.extend(t[2])
+
+    def print_ranges(**kwargs):
+        for k, v in kwargs.items():
+            mean = repr(np.mean(v, axis=0, keepdims=True))
+            stddev = repr(np.std(v, axis=0, keepdims=True))
+            print(f"{k} -= np.{mean}")
+            print(f"{k} /= np.{stddev}")
+
+    print_ranges(
+        gripper_pos=observations['gripper_pos'],
+        gripper_sensors=observations['gripper_sensors'],
+        states=states,
+        controls=controls,
+    )
 
 
 class PandaDynamicsDataset(torch.utils.data.Dataset):
@@ -190,7 +240,7 @@ class PandaMeasurementDataset(torch.utils.data.Dataset):
     # (x, y, cos theta, sin theta, mass, friction)
     # TODO: fix default variances for mass, friction
     # default_stddev = (0.015, 0.015, 1e-4, 1e-4, 1e-4, 1e-4)
-    default_stddev = (0.005, 0.005) #, 0.015, 0.015, 0.015, 0.015)
+    default_stddev = (0.005, 0.005)  # , 0.015, 0.015, 0.015, 0.015)
 
     def __init__(self, *paths, stddev=None, samples_per_pair=20, **kwargs):
         """
@@ -259,7 +309,7 @@ class PandaMeasurementDataset(torch.utils.data.Dataset):
 class PandaParticleFilterDataset(dpf.ParticleFilterDataset):
     # (x, y, cos theta, sin theta, mass, friction)
     # TODO: fix default variances for mass, friction
-    default_particle_stddev = [0.02, 0.02]#, 0.1, 0.1, 0, 0]
+    default_particle_stddev = [0.02, 0.02]  # , 0.1, 0.1, 0, 0]
     default_subsequence_length = 20
     default_particle_count = 100
 
