@@ -6,6 +6,15 @@ import torch.nn.functional as F
 
 from fannypack.nn import resblocks
 
+def weighted_average(predictions: list, weights: list):
+    assert len(predictions) == len(weights)
+
+    prediction = np.array(predictions)
+    weights = np.array(weights)
+    weights = weights/np.sum(weights)
+
+    return np.average(prediction, axis=0, weights=weights)
+
 
 class CrossModalWeights(nn.Module):
 
