@@ -74,7 +74,7 @@ class KalmanFilterNetwork(nn.Module):
         states_sigma_pred += states_pred_Q
 
         # Measurement update step!
-        z, R = self.measurement_model(observations)
+        z, R = self.measurement_model(observations, states_pred)
 
         #Kalman Gain
         K_update = torch.bmm(states_sigma_pred, torch.inverse(states_sigma_pred + R))

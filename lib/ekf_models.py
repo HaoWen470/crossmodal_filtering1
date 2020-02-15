@@ -114,7 +114,7 @@ class PandaEKFMeasurementModel(ekf.KFMeasurementModel):
         )
 
         self.shared_layers = nn.Sequential(
-            nn.Linear(units * 3, units * 2),
+            nn.Linear(units * 4, units * 2),
             nn.ReLU(inplace=True),
             resblocks.Linear(2*units),
             resblocks.Linear(2*units),
@@ -134,12 +134,15 @@ class PandaEKFMeasurementModel(ekf.KFMeasurementModel):
 
         self.units = units
 
-    def forward(self, observations):
+    def forward(self, observations, states):
         assert type(observations) == dict
-
+        
         # N := distinct trajectory count (batch size)
 
         N = observations['image'].shape[0]
+        
+        assert states.shape == (N, self.state_dim)
+
 
         # Construct observations feature vector
         # (N, obs_dim)
@@ -153,15 +156,15 @@ class PandaEKFMeasurementModel(ekf.KFMeasurementModel):
 
         assert observation_features.shape == (N, self.units * 3)
 
-        # # (N, state_dim) => (N, units)
-        # state_features = self.state_layers(states)
-        # assert state_features.shape == (N, self.units)
+        # (N, state_dim) => (N, units)
+        state_features = self.state_layers(states)
+        assert state_features.shape == (N, self.units)
 
-        # # (N, units)
-        # merged_features = torch.cat(
-        #     (observation_features, state_features),
-        #     dim=1)
-        # assert merged_features.shape == (N, self.units * 4)
+        # (N, units)
+        merged_features = torch.cat(
+            (observation_features, state_features),
+            dim=1)
+        assert merged_features.shape == (N, self.units * 4)
 
         shared_features = self.shared_layers(observation_features)
         assert shared_features.shape == (N, self.units * 2)
