@@ -4,6 +4,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 import abc
 
+import fannypack
+
 
 class KFMeasurementModel(abc.ABC, nn.Module):
 
@@ -35,10 +37,12 @@ class KalmanFilterNetwork(nn.Module):
         x = x.repeat(1, noutputs, 1)
         x.requires_grad_(True)
         y = net(x, controls)
+        
+        mask = torch.eye(noutputs).repeat(batch, 1, 1).to(x.device)
         if type(y) is tuple:
-            y[output_dim].backward(torch.eye(noutputs), create_graph=True)
+            y[output_dim].backward(mask, create_graph=True)
         else:
-            y.backward(torch.eye(noutputs).repeat(batch, 1, 1), create_graph=True)
+            y.backward(mask, create_graph=True)
 
         return x.grad
 
@@ -53,7 +57,6 @@ class KalmanFilterNetwork(nn.Module):
         # N := distinct trajectory count
 
         N, state_dim = states_prev.shape
-
         # Dynamics prediction step
         states_pred = self.dynamics_model(
             states_prev, controls, noisy=noisy_dynamics)
@@ -79,7 +82,7 @@ class KalmanFilterNetwork(nn.Module):
         #Updating
         states_update = torch.unsqueeze(states_pred,-1) + torch.bmm(K_update, torch.unsqueeze(z-states_pred,-1))
         states_update = states_update.squeeze()
-        states_sigma_update = torch.bmm(torch.eye(K_update.shape[-1]).repeat(N, 1, 1) - K_update, states_sigma_pred)
+        states_sigma_update = torch.bmm(torch.eye(K_update.shape[-1]).repeat(N, 1, 1).to(K_update.device) - K_update, states_sigma_pred)
 
 
         return states_update, states_sigma_update

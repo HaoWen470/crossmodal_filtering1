@@ -8,6 +8,8 @@ from fannypack.nn import resblocks
 from lib.panda_models import PandaSimpleDynamicsModel
 from lib import ekf
 
+import fannypack
+
 class PandaEKFDynamicsModel(PandaSimpleDynamicsModel):
     """
     Using same dynamics model as DPF
@@ -38,7 +40,7 @@ class PandaEKFDynamicsModel(PandaSimpleDynamicsModel):
             resblocks.Linear(self.state_dim),
             resblocks.Linear(self.state_dim),
         )
-        
+
         self.Q = torch.from_numpy(np.diag(self.state_noise_stddev))
 
     def forward(self, states_prev, controls, noisy=False):
@@ -48,6 +50,9 @@ class PandaEKFDynamicsModel(PandaSimpleDynamicsModel):
         # assert len(states_prev.shape) == 2  # (N, state_dim)
 
         # N := distinct trajectory count
+        
+        self.Q = self.Q.to(states_prev.device)
+
         if len(states_prev.shape) > 2:
             N, _, state_dim = states_prev.shape
         else:
