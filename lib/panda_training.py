@@ -1,4 +1,5 @@
 import torch
+import torch.nn.functional as F
 import numpy as np
 import matplotlib.pyplot as plt
 from tqdm import tqdm_notebook
@@ -6,6 +7,75 @@ from tqdm import tqdm_notebook
 from fannypack import utils
 
 from . import dpf
+
+
+def train_dynamics_recurrent(buddy, pf_model, dataloader, log_interval=10):
+    # Train dynamics only for 1 epoch
+    # Train for 1 epoch
+    for batch_idx, batch in enumerate(tqdm_notebook(dataloader)):
+        # Transfer to GPU and pull out batch data
+        batch_gpu = utils.to_device(batch, buddy._device)
+        batch_states, batch_obs, batch_controls = batch_gpu
+
+        # N = batch size, M = particle count
+        N, timesteps, control_dim = batch_controls.shape
+        N, timesteps, state_dim = batch_states.shape
+        assert batch_controls.shape == (N, timesteps, control_dim)
+
+        # Track current states as they're propagated through our dynamics model
+        states = batch_states[:, 0, :]
+        assert states.shape == (N, state_dim)
+
+        # Accumulate losses from each timestep
+        losses = []
+
+        # Compute some state deltas for debugging
+        label_deltas = np.mean(utils.to_numpy(
+            batch_states[:, 1:, :] - batch_states[:, :-1, :]
+        ) ** 2, axis=(0, 2))
+        assert label_deltas.shape == (timesteps - 1, )
+        pred_deltas = []
+
+        for t in range(1, timesteps):
+            # Propagate current states through dynamics model
+            controls = batch_controls[:, t, :]
+            new_states = pf_model.dynamics_model(
+                states[:, np.newaxis, :],  # Add particle dimension
+                controls,
+                noisy=True,
+            ).squeeze(dim=1)  # Remove particle dimension
+            assert new_states.shape == (N, state_dim)
+
+            # Compute and add loss
+            mse_loss = F.mse_loss(batch_states[:, t, :], new_states)
+            losses.append(mse_loss)
+
+            # Compute delta and update states
+            pred_deltas.append(np.mean(
+                utils.to_numpy(new_states - states) ** 2
+            ))
+            states = new_states
+
+        pred_deltas = np.array(pred_deltas)
+        assert pred_deltas.shape == (timesteps - 1, )
+
+        loss = torch.mean(torch.stack(losses))
+        buddy.minimize(
+            loss,
+            optimizer_name="dynamics",
+            checkpoint_interval=10000)
+
+        if buddy.optimizer_steps % log_interval == 0:
+            with buddy.log_scope("dynamics_recurrent"):
+                buddy.log("Training loss", loss)
+
+                buddy.log("Label delta mean", label_deltas.mean())
+                buddy.log("Label delta std", label_deltas.std())
+
+                buddy.log("Pred delta mean", pred_deltas.mean())
+                buddy.log("Pred delta std", pred_deltas.std())
+
+    print("Epoch loss:", np.mean(utils.to_numpy(losses)))
 
 
 def train_dynamics(buddy, pf_model, dataloader, log_interval=10):

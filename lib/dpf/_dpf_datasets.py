@@ -180,4 +180,4 @@ def _split_trajectories(trajectories, subsequence_length):
             # Add to subsequences
             subsequences.append((s, o, c))
 
-        return subsequences
+    return subsequences

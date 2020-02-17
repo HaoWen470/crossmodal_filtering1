@@ -154,6 +154,27 @@ class PandaDynamicsModel(dpf.DynamicsModel):
         return states_new
 
 
+class PandaSimpleMeasurementModel(dpf.MeasurementModel):
+    """Wrap a blindfold around our state estimator -- hopefully the dynamics
+    model is good enough!
+    """
+
+    def __init__(self):
+        super().__init__()
+
+    def forward(self, observations, states):
+        assert type(observations) == dict
+        assert len(states.shape) == 3  # (N, M, state_dim)
+
+        # N := distinct trajectory count
+        # M := particle count
+
+        N, M, _ = states.shape
+
+        # Return (N, M)
+        return torch.ones((N, M))
+
+
 class PandaMeasurementModel(dpf.MeasurementModel):
 
     def __init__(self, units=32):
