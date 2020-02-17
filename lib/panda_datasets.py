@@ -309,7 +309,27 @@ class PandaMeasurementDataset(torch.utils.data.Dataset):
         return len(self.dataset) * self.samples_per_pair
 
 
+class PandaSubsequenceDataset(dpf.SubsequenceDataset):
+    """A data preprocessor for producing overlapping subsequences from
+    Panda trajectories.
+    """
+    default_subsequence_length = 20
+
+    def __init__(self, *paths, **kwargs):
+        """ Initialize the dataset. We chop our list of trajectories into a set
+        of subsequences.
+
+        Args:
+            *paths: paths to dataset hdf5 files
+        """
+        trajectories = load_trajectories(*paths, **kwargs)
+        super().__init__(trajectories, **kwargs)
+
+
 class PandaParticleFilterDataset(dpf.ParticleFilterDataset):
+    """A data preprocessor for producing overlapping subsequences + initial
+    particle sets from Panda trajectories.
+    """
     # (x, y, cos theta, sin theta, mass, friction)
     # TODO: fix default variances for mass, friction
     default_particle_stddev = [0.02, 0.02]  # , 0.1, 0.1, 0, 0]
@@ -317,9 +337,11 @@ class PandaParticleFilterDataset(dpf.ParticleFilterDataset):
     default_particle_count = 100
 
     def __init__(self, *paths, **kwargs):
-        """
+        """ Initialize the dataset. We chop our list of trajectories into a set
+        of subsequences.
+
         Args:
-          *paths: paths to dataset hdf5 files
+            *paths: paths to dataset hdf5 files
         """
 
         trajectories = load_trajectories(*paths, **kwargs)

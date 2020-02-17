@@ -9,9 +9,7 @@ from . import dpf
 
 
 class PandaParticleFilterNetwork(dpf.ParticleFilterNetwork):
-    def __init__(self, **kwargs):
-        dynamics_model = PandaSimpleDynamicsModel()
-        measurement_model = PandaMeasurementModel()
+    def __init__(self, dynamics_model, measurement_model, **kwargs):
         super().__init__(dynamics_model, measurement_model, **kwargs)
 
 
@@ -59,6 +57,98 @@ class PandaSimpleDynamicsModel(dpf.DynamicsModel):
             # Project to valid cosine/sine space
             scale = torch.norm(states_new[:, :, 2:4], keepdim=True)
             states_new[:, :, 2:4] /= scale
+
+        # Return (N, M, state_dim)
+        return states_new
+
+
+class PandaDynamicsModel(dpf.DynamicsModel):
+
+    # (x, y, cos theta, sin theta, mass, friction)
+    default_state_noise_stddev = (
+        0.05,  # x
+        0.05,  # y
+        # 1e-10,  # cos theta
+        # 1e-10,  # sin theta
+        # 1e-10,  # mass
+        # 1e-10,  # friction
+    )
+
+    def __init__(self, state_noise_stddev=None, units=32):
+        super().__init__()
+
+        state_dim = 2
+        control_dim = 7
+
+        if state_noise_stddev is not None:
+            self.state_noise_stddev = state_noise_stddev
+        else:
+            self.state_noise_stddev = self.default_state_noise_stddev
+
+        self.state_layers = nn.Sequential(
+            nn.Linear(state_dim, units // 2),
+            resblocks.Linear(units // 2),
+        )
+        self.control_layers = nn.Sequential(
+            nn.Linear(control_dim, units // 2),
+            resblocks.Linear(units // 2),
+        )
+        self.shared_layers = nn.Sequential(
+            resblocks.Linear(units),
+            resblocks.Linear(units),
+            resblocks.Linear(units),
+            nn.Linear(units, state_dim),
+        )
+
+        self.units = units
+
+    def forward(self, states_prev, controls, noisy=False):
+        # states_prev:  (N, M, state_dim)
+        # controls: (N, control_dim)
+
+        assert len(states_prev.shape) == 3  # (N, M, state_dim)
+        assert len(controls.shape) == 2  # (N, control_dim,)
+
+        # N := distinct trajectory count
+        # M := particle count
+        N, M, state_dim = states_prev.shape
+
+        # (N, control_dim) => (N, units // 2)
+        control_features = self.control_layers(controls)
+        assert control_features.shape == (N, self.units // 2)
+
+        # (N, units // 2) => (N, M, units // 2)
+        control_features = control_features[:, np.newaxis, :].expand(
+            N, M, self.units // 2)
+        assert control_features.shape == (N, M, self.units // 2)
+
+        # (N, M, state_dim) => (N, M, units // 2)
+        state_features = self.state_layers(states_prev)
+        assert state_features.shape == (N, M, self.units // 2)
+
+        # (N, M, units)
+        merged_features = torch.cat(
+            (control_features, state_features),
+            dim=2)
+        assert merged_features.shape == (N, M, self.units)
+
+        # (N, M, units * 2) => (N, M, state_dim)
+        state_update = self.shared_layers(merged_features)
+        assert state_update.shape == (N, M, state_dim)
+
+        # Compute new states
+        states_new = states_prev + state_update
+        assert states_new.shape == (N, M, state_dim)
+
+        # Add noise if desired
+        if noisy:
+            # TODO: implement version w/ learnable noise
+            # (via reparemeterization; should be simple)
+            dist = torch.distributions.Normal(
+                torch.tensor([0.]), torch.tensor(self.state_noise_stddev))
+            noise = dist.sample((N, M)).to(states_new.device)
+            assert noise.shape == (N, M, state_dim)
+            states_new = states_new + noise
 
         # Return (N, M, state_dim)
         return states_new
