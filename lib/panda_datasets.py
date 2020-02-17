@@ -123,26 +123,29 @@ def load_trajectories(*paths, use_vision=True,
                 assert controls.shape == (timesteps, 7)
 
                 # Normalization
-                observations['gripper_pos'] -= np.array([[0.455967, - 0.01341514, 0.880639]])
-                observations['gripper_pos'] /= np.array(
-                    [[0.00735019, 0.02312305, 0.03969879]])
-                observations['gripper_sensors'] -= np.array(
-                    [[-1.4395459e-01, 1.3516411e+00, -3.2150087e+00,
-                      -1.1090579e-01, -4.6001539e-02, 1.5583872e-03,
-                      2.4166666e-01]])
-                observations['gripper_sensors'] /= np.array(
-                    [[1.291729, 2.461422, 0.56859004, 0.20127113, 0.09833302,
-                      0.00823816, 0.42809328]])
-                states -= np.array([[0.4351026, -0.0721447]])
-                states /= np.array([[0.0050614, 0.01165088]])
-                controls -= np.array(
-                    [[-0.01127849, 0.87681806, 0.45754063, 0.46724555,
-                      -0.8902338, 0.42309874, 0.24166666]])
-                controls /= np.array(
-                    [[0.03666912, 0.07343381, 0.02567112,
-                      0.03398367, 0.06594761, 0.04507983, 0.42809328]])
 
-            trajectories.append((states, observations, controls))
+                observations['gripper_pos'] -= np.array(
+                    [[0.46806443, -0.0017836, 0.88028437]], dtype=np.float32)
+                observations['gripper_pos'] /= np.array(
+                    [[0.02410769, 0.02341035, 0.04018243]], dtype=np.float32)
+                observations['gripper_sensors'] -= np.array(
+                    [[4.9182904e-01, 4.5039989e-02, -3.2791464e+00,
+                      -3.3874984e-03, 1.1552566e-02, -8.4817986e-04,
+                      2.1303751e-01]], dtype=np.float32)
+                observations['gripper_sensors'] /= np.array(
+                    [[1.6152629, 1.666905, 1.9186896, 0.14219016, 0.14232528,
+                      0.01675198, 0.40950698]], dtype=np.float32)
+                states -= np.array([[0.4970164, -0.00916641]])
+                states /= np.array([[0.0572766, 0.06118315]])
+                controls -= np.array(
+                    [[3.2848225e-04, 8.7676758e-01, 4.6962801e-01,
+                      4.6772522e-01, -8.7855840e-01, 4.1107172e-01,
+                      2.1303751e-01]], dtype=np.float32)
+                controls /= np.array(
+                    [[0.03975769, 0.07004428, 0.03383452, 0.04635485,
+                      0.07224426, 0.05950112, 0.40950698]], dtype=np.float32)
+
+                trajectories.append((states, observations, controls))
 
     ## Uncomment this line to generate the lines required to normalize data
     # _print_normalization(trajectories)
@@ -240,7 +243,7 @@ class PandaMeasurementDataset(torch.utils.data.Dataset):
     # (x, y, cos theta, sin theta, mass, friction)
     # TODO: fix default variances for mass, friction
     # default_stddev = (0.015, 0.015, 1e-4, 1e-4, 1e-4, 1e-4)
-    default_stddev = (0.005, 0.005)  # , 0.015, 0.015, 0.015, 0.015)
+    default_stddev = (1, 1)  # , 0.015, 0.015, 0.015, 0.015)
 
     def __init__(self, *paths, stddev=None, samples_per_pair=20, **kwargs):
         """

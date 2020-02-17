@@ -138,16 +138,20 @@ def train_e2e(buddy, pf_model, dataloader, log_interval=2, loss_type="gmm"):
 
             losses.append(loss)
 
+            # Enable backprop through time
+            particles = new_particles
+            log_weights = new_log_weights
+
+            # # Disable backprop through time
+            # particles = new_particles.detach()
+            # log_weights = new_log_weights.detach()
+
             # assert state_estimates.shape == batch_states[:, t, :].shape
 
         buddy.minimize(
             torch.mean(torch.stack(losses)),
             optimizer_name="e2e",
             checkpoint_interval=10000)
-
-        # # Disable backprop through time
-        # particles = new_particles.detach()
-        # log_weights = new_log_weights.detach()
 
         if buddy.optimizer_steps % log_interval == 0:
             with buddy.log_scope("e2e"):
