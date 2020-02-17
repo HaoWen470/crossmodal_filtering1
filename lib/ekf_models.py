@@ -166,7 +166,7 @@ class PandaEKFMeasurementModel(ekf.KFMeasurementModel):
             dim=1)
         assert merged_features.shape == (N, self.units * 4)
 
-        shared_features = self.shared_layers(observation_features)
+        shared_features = self.shared_layers(merged_features)
         assert shared_features.shape == (N, self.units * 2)
 
         z = self.z_layer(shared_features[:, :self.units])
