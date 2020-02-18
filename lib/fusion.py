@@ -4,40 +4,104 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from fannypack.nn import resblocks
+from fannypack import utils
 from lib.ekf_models import PandaEKFDynamicsModel, PandaEKFMeasurementModel
 from lib.modality_models import MissingModalityMeasurementModel
+from lib.ekf import KalmanFilterNetwork
 
-def training_weighted_fusion(buddy, dataloader, log_interval=2):
+
+def training_weighted_fusion(buddy, dataloader, log_interval=2, fusion_type="weighted"):
 
     # full_modality_model
     full_measurement = PandaEKFMeasurementModel()
     full_dynamics = PandaEKFDynamicsModel()
+    full_model = KalmanFilterNetwork(full_dynamics, full_measurement)
 
     # image_modality_model
     image_measurement = MissingModalityMeasurementModel("image")
     image_dynamics = PandaEKFDynamicsModel()
+    image_model = KalmanFilterNetwork(image_dynamics, image_measurement)
+
 
     # force_modality_model
     force_measurement = MissingModalityMeasurementModel("gripper_sensors")
     force_dynamics =  PandaEKFDynamicsModel()
+    force_model = KalmanFilterNetwork(force_dynamics, force_measurement)
 
+    weight_model = CrossModalWeights()
 
-    # weights = CrossModalWeights(observations, states)
-    # predicted_state = weighted_average(predictions, weights)
+    for batch_idx, batch in enumerate((dataloader)):
+        # for batch_idx, batch in enumerate((dataloader_full)):
+        # Transfer to GPU and pull out batch data
+        batch_gpu = utils.to_device(batch, buddy._device)
+        _, batch_states, batch_obs, batch_controls = batch_gpu
+        # N = batch size, M = particle count
+        N, timesteps, control_dim = batch_controls.shape
+        N, timesteps, state_dim = batch_states.shape
+        assert batch_controls.shape == (N, timesteps, control_dim)
 
-    pass
+        state = batch_states[:, 0, :]
+        state_sigma = torch.eye(state.shape[-1], device=buddy._device) * 0.001
+        state_sigma = state_sigma.unsqueeze(0).repeat(N, 1, 1)
 
+        # Accumulate losses from each timestep
+        losses = []
+        for t in range(1, timesteps - 1):
+            prev_state = state
+            prev_state_sigma = state_sigma
 
-def training_poe_fusion():
-    # full_modality_model
-    # image_modality_model
-    # force_modality_model
-    #
-    # weights = CrossModalWeights(observations, states)
-    # predicted_state = product_of_experts(predictions, weights)
+            full_state, full_state_sigma = full_model.forward(
+                prev_state,
+                prev_state_sigma,
+                utils.DictIterator(batch_obs)[:, t, :],
+                batch_controls[:, t, :],
+                noisy_dynamics=True
+            )
 
+            image_state, image_state_sigma = image_model.forward(
+                prev_state,
+                prev_state_sigma,
+                utils.DictIterator(batch_obs)[:, t, :],
+                batch_controls[:, t, :],
+                noisy_dynamics=True
+            )
 
-    pass
+            force_state, force_state_sigma = force_model.forward(
+                prev_state,
+                prev_state_sigma,
+                utils.DictIterator(batch_obs)[:, t, :],
+                batch_controls[:, t, :],
+                noisy_dynamics=True
+            )
+
+            weights = weight_model.forward(utils.DictIterator(batch_obs)[:, t, :])
+
+            state_preds = [full_state, image_state, force_state]
+            state_sigma_preds = [full_state_sigma, image_state_sigma, force_state_sigma]
+
+            if fusion_type == "weighted":
+                state = weighted_average(state_preds, weights)
+                state_sigma = weighted_average(state_sigma_preds, weights)
+            elif fusion_type == "poe":
+                state = product_of_experts(state_preds, weights)
+                state_sigma = product_of_experts(state_sigma_preds, weights)
+            else:
+                raise Error("Fusion type not implemented")
+
+            assert state.shape == batch_states[:, t, :].shape
+            loss = torch.mean((state - batch_states[:, t, :]) ** 2)
+            losses.append(loss)
+        buddy.minimize(
+            torch.mean(torch.stack(losses)),
+            optimizer_name="ekf",
+            checkpoint_interval=500)
+
+        if buddy.optimizer_steps % log_interval == 0:
+            with buddy.log_scope("ekf"):
+                buddy.log("Training loss", loss)
+
+        print("Epoch loss:", np.mean(utils.to_numpy(losses)))
+    buddy.save_checkpoint()
 
 
 def weighted_average(predictions: list, weights: list):
@@ -92,12 +156,9 @@ class CrossModalWeights(nn.Module):
             nn.Linear(obs_sensors_dim, units),
             resblocks.Linear(units),
         )
-        self.state_layers = nn.Sequential(
-            nn.Linear(self.state_dim, units),
-        )
 
         self.shared_layers = nn.Sequential(
-            nn.Linear(units * 4, units * 2),
+            nn.Linear(units * 3, units * 2),
             nn.ReLU(inplace=True),
             resblocks.Linear(3 * units),
             resblocks.Linear(3 * units),
@@ -144,18 +205,9 @@ class CrossModalWeights(nn.Module):
 
         assert observation_features.shape == (N, self.units * 3)
 
-        # (N, state_dim) => (N, units)
-        state_features = self.state_layers(states)
-        assert state_features.shape == (N, self.units)
-
-        # (N, units)
-        merged_features = torch.cat(
-            (observation_features, state_features),
-            dim=1)
-        assert merged_features.shape == (N, self.units * 4)
 
         shared_features = self.shared_layers(observation_features)
-        assert shared_features.shape == (N, self.units * 2)
+        assert shared_features.shape == (N, self.units * 3)
 
         force_prop_beta = self.force_prop_layer(shared_features[:, :self.units])
         image_prop_beta = self.image_prop_layer(shared_features[:, self.units:self.units * 2])
