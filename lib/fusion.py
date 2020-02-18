@@ -1,19 +1,66 @@
-from lib.ekf_models import PandaEKFMeasurementModel
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
 from fannypack.nn import resblocks
+from lib.ekf_models import PandaEKFDynamicsModel, PandaEKFMeasurementModel
+from lib.modality_models import MissingModalityMeasurementModel
+
+def training_weighted_fusion(buddy, dataloader, log_interval=2):
+
+    # full_modality_model
+    full_measurement = PandaEKFMeasurementModel()
+    full_dynamics = PandaEKFDynamicsModel()
+
+    # image_modality_model
+    image_measurement = MissingModalityMeasurementModel("image")
+    image_dynamics = PandaEKFDynamicsModel()
+
+    # force_modality_model
+    force_measurement = MissingModalityMeasurementModel("gripper_sensors")
+    force_dynamics =  PandaEKFDynamicsModel()
+
+
+    # weights = CrossModalWeights(observations, states)
+    # predicted_state = weighted_average(predictions, weights)
+
+    pass
+
+
+def training_poe_fusion():
+    # full_modality_model
+    # image_modality_model
+    # force_modality_model
+    #
+    # weights = CrossModalWeights(observations, states)
+    # predicted_state = product_of_experts(predictions, weights)
+
+
+    pass
+
 
 def weighted_average(predictions: list, weights: list):
     assert len(predictions) == len(weights)
 
-    prediction = np.array(predictions)
-    weights = np.array(weights)
-    weights = weights/np.sum(weights)
+    predictions = torch.stack(predictions)
+    weights = torch.stack(weights)
+    weights = weights / torch.sum(weights, dim=0)
 
-    return np.average(prediction, axis=0, weights=weights)
+    return torch.sum(weights*predictions, dim=0)
+
+
+def product_of_experts(predictions: list, weights: list):
+    assert len(predictions) == len(weights)
+
+    weights = torch.stack(weights)
+    predictions = torch.stack(predictions)
+    T= 1.0/weights
+
+    mu = (predictions * T).sum(0) * (1.0/ T.sum(0))
+    var = (1.0/T.sum(0))
+
+    return mu, var
 
 
 class CrossModalWeights(nn.Module):
