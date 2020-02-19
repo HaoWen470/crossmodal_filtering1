@@ -9,6 +9,9 @@ from lib import ekf
 
 from utils import spatial_softmax
 
+"""
+CURRENTLY DEPRECATED. USE PANDA_MODELS INSTEAD 
+"""
 
 class PandaEKFDynamicsModel(PandaSimpleDynamicsModel):
     """
@@ -42,6 +45,8 @@ class PandaEKFDynamicsModel(PandaSimpleDynamicsModel):
         )
 
         self.Q = torch.from_numpy(np.diag(self.state_noise_stddev))
+
+        print("Currently deprecated. Use models in panda_models.py")
 
     def forward(self, states_prev, controls, noisy=False):
         # states_prev:  (N, state_dim)
@@ -85,6 +90,7 @@ class PandaEKFMeasurementModel(ekf.KFMeasurementModel):
 
     def __init__(self, units=16, state_dim=2, use_states=False, use_spatial_softmax=True):
         super().__init__()
+        print("Currently deprecated. Use models in panda_models.py")
 
         obs_pose_dim = 3
         obs_sensors_dim = 7

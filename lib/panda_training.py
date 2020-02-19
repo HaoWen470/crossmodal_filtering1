@@ -20,7 +20,7 @@ def train_dynamics_recurrent(
     for batch_idx, batch in enumerate(tqdm_notebook(dataloader)):
         # Transfer to GPU and pull out batch data
         batch_gpu = utils.to_device(batch, buddy._device)
-        batch_states, batch_obs, batch_controls = batch_gpu
+
 
         # N = batch size, M = particle count
         N, timesteps, control_dim = batch_controls.shape

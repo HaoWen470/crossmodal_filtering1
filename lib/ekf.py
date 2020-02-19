@@ -23,6 +23,7 @@ class KalmanFilterNetwork(nn.Module):
         super().__init__()
 
         self.dynamics_model = dynamics_model
+        assert self.dynamics_model.use_particles == False 
         self.measurement_model = measurement_model
 
         self.freeze_dynamics_model = False
