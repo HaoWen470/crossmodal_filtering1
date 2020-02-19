@@ -88,7 +88,7 @@ class PandaEKFMeasurementModel(ekf.KFMeasurementModel):
     todo: do we also have overall measurement class? or different for kf and pf?
     """
 
-    def __init__(self, units=16, state_dim=2, use_states=False, use_spatial_softmax=True):
+    def __init__(self, units=16, state_dim=2, use_states=False, use_spatial_softmax=False):
         super().__init__()
         print("Currently deprecated. Use models in panda_models.py")
 
@@ -126,7 +126,7 @@ class PandaEKFMeasurementModel(ekf.KFMeasurementModel):
                 nn.ReLU(inplace=True),
                 nn.Conv2d(in_channels=16, out_channels=8, kernel_size=3, padding=1),
                 nn.Flatten(),  # 32 * 32 = 1024
-                nn.Linear(2 * 32 * 32, units),
+                nn.Linear(8 * 32 * 32, units),
                 nn.ReLU(inplace=True),
                 resblocks.Linear(units),
             )

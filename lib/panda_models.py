@@ -109,27 +109,34 @@ class PandaDynamicsModel(dpf.DynamicsModel):
         )
 
         self.units = units
+        self.Q = torch.from_numpy(np.diag(np.array(self.state_noise_stddev)))
 
     def forward(self, states_prev, controls, noisy=False):
         # states_prev:  (N, M, state_dim)
         # controls: (N, control_dim)
+        self.Q = self.Q.to(states_prev.device)
+
+        self.jacobian = False
         if self.use_particles:
             assert len(states_prev.shape) == 3  # (N, M, state_dim)
             N, M, state_dim = states_prev.shape
             dimensions = (N, M)
-
         else:
-            assert len(states_prev.shape) == 2  # (N, M, state_dim)
-            N, state_dim = states_prev.shape
-            dimensions = (N,)
-        assert len(controls.shape) == 2  # (N, control_dim,)
+            if len(states_prev.shape) > 2:
+                N, X, state_dim = states_prev.shape
+                dimensions = (N, X)
+                self.jacobian = True
+            else:
+                assert len(states_prev.shape) == 2  # (N, M, state_dim)
+                N, state_dim = states_prev.shape
+                dimensions = (N,)
+                assert len(controls.shape) == 2  # (N, control_dim,)
 
         # N := distinct trajectory count
         # M := particle count
 
         # (N, control_dim) => (N, units // 2)
         control_features = self.control_layers(controls)
-        assert control_features.shape == (N, self.units)
 
         # (N, units // 2) => (N, M, units // 2)
         if self.use_particles:
@@ -144,7 +151,7 @@ class PandaDynamicsModel(dpf.DynamicsModel):
         # (N, M, units)
         merged_features = torch.cat(
             (control_features, state_features),
-            dim=2)
+            dim=-1)
         assert merged_features.shape == dimensions +  (self.units * 2, )
 
         # (N, M, units * 2) => (N, M, state_dim + 1)
@@ -152,7 +159,7 @@ class PandaDynamicsModel(dpf.DynamicsModel):
 
         # We separately compute a direction for our network and a "gate"
         # These are multiplied to produce our final state output
-        if self.use_particles:
+        if self.use_particles or self.jacobian:
             state_update_direction = output_features[:, :, :state_dim]
             state_update_gate = torch.sigmoid(output_features[:, :, -1:])
         else:
@@ -327,8 +334,8 @@ class PandaEKFMeasurementModel(dpf.MeasurementModel):
                 nn.Conv2d(in_channels=32, out_channels=16, kernel_size=3, padding=1),
                 nn.ReLU(inplace=True),
                 nn.Conv2d(in_channels=16, out_channels=8, kernel_size=3, padding=1),
-                nn.Flatten(),  # 32 * 32 = 1024
-                nn.Linear(2 * 32 * 32, units),
+                nn.Flatten(),  # 32 * 32 * 8
+                nn.Linear(8 * 32 * 32, units),
                 nn.ReLU(inplace=True),
                 resblocks.Linear(units),
             )

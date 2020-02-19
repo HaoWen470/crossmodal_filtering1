@@ -36,6 +36,8 @@ class KalmanFilterNetwork(nn.Module):
         n = x.size()[0]
         x = x.unsqueeze(1)
         x = x.repeat(1, noutputs, 1)
+        controls = controls.unsqueeze(1)
+        controls = controls.repeat(1, noutputs, 1)
         x.requires_grad_(True)
         y = net(x, controls)
         
@@ -66,7 +68,6 @@ class KalmanFilterNetwork(nn.Module):
         if self.freeze_dynamics_model:
             # Don't backprop through frozen models
             states_pred = states_pred.detach()
-
         jac_A = self.get_jacobian(self.dynamics_model, states_prev, state_dim, N, controls)
         assert jac_A.shape == (N, state_dim, state_dim)
 
