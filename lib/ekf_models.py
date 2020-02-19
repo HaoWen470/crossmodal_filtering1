@@ -1,16 +1,14 @@
 import numpy as np
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 
 from fannypack.nn import resblocks
 
 from lib.panda_models import PandaSimpleDynamicsModel
 from lib import ekf
 
-from fannypack.nn import spatial_softmax
+from utils import spatial_softmax
 
-import fannypack
 
 class PandaEKFDynamicsModel(PandaSimpleDynamicsModel):
     """
@@ -85,7 +83,7 @@ class PandaEKFMeasurementModel(ekf.KFMeasurementModel):
     todo: do we also have overall measurement class? or different for kf and pf?
     """
 
-    def __init__(self, units=16, state_dim=2, use_states=False, spatial_softmax=True):
+    def __init__(self, units=16, state_dim=2, use_states=False, use_spatial_softmax=True):
         super().__init__()
 
         obs_pose_dim = 3
@@ -100,7 +98,7 @@ class PandaEKFMeasurementModel(ekf.KFMeasurementModel):
         else:
             shared_layer_dim = units * 3
 
-        if spatial_softmax:
+        if use_spatial_softmax:
             self.observation_image_layers = nn.Sequential(
                 nn.Conv2d(in_channels=1, out_channels=32, kernel_size=5, padding=2),
                 nn.ReLU(inplace=True),
