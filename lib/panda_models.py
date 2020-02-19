@@ -74,7 +74,7 @@ class PandaDynamicsModel(dpf.DynamicsModel):
         # 1e-10,  # friction
     )
 
-    def __init__(self, state_noise_stddev=None, units=32):
+    def __init__(self, state_noise_stddev=None, units=64):
         super().__init__()
 
         state_dim = 2
@@ -98,7 +98,9 @@ class PandaDynamicsModel(dpf.DynamicsModel):
             resblocks.Linear(units),
             resblocks.Linear(units),
             resblocks.Linear(units),
-            nn.Linear(units, state_dim),
+            # We add 1 to state_dim to produce an extra "gate" term -- see
+            # implementation below
+            nn.Linear(units, state_dim + 1),
         )
 
         self.units = units
@@ -133,8 +135,14 @@ class PandaDynamicsModel(dpf.DynamicsModel):
             dim=2)
         assert merged_features.shape == (N, M, self.units * 2)
 
-        # (N, M, units * 2) => (N, M, state_dim)
-        state_update = self.shared_layers(merged_features)
+        # (N, M, units * 2) => (N, M, state_dim + 1)
+        output_features = self.shared_layers(merged_features)
+
+        # We separately compute a direction for our network and a "gate"
+        # These are multiplied to produce our final state output
+        state_update_direction = output_features[:, :, :state_dim]
+        state_update_gate = torch.sigmoid(output_features[:, :, -1:])
+        state_update = state_update_direction * state_update_gate
         assert state_update.shape == (N, M, state_dim)
 
         # Compute new states
