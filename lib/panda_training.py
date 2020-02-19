@@ -88,7 +88,7 @@ def train_dynamics_recurrent(
 
                 # Compute loss
                 magnitude_loss = F.mse_loss(pred_magnitude, label_magnitude)
-                direction_loss = 
+                # direction_loss =
                 timestep_loss = magnitude_loss + direction_loss
 
                 magnitude_losses.append(magnitude_loss)
