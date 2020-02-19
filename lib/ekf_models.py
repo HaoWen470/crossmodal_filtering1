@@ -105,9 +105,9 @@ class PandaEKFMeasurementModel(ekf.KFMeasurementModel):
                 resblocks.Conv2d(channels=32, kernel_size=3),
                 nn.Conv2d(in_channels=32, out_channels=16, kernel_size=3, padding=1),
                 nn.ReLU(inplace=True),
-                nn.Conv2d(in_channels=16, out_channels=8, kernel_size=3, padding=1),
-                spatial_softmax.SpatialSoftmax(32, 32, 8),
-                nn.Linear(8 * 2, units),
+                nn.Conv2d(in_channels=16, out_channels=16, kernel_size=3, padding=1),
+                spatial_softmax.SpatialSoftmax(32, 32, 16),
+                nn.Linear(16 * 2, units),
                 nn.ReLU(inplace=True),
                 resblocks.Linear(units),
             )
