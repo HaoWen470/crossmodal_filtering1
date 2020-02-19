@@ -8,6 +8,8 @@ from fannypack.nn import resblocks
 from lib.panda_models import PandaSimpleDynamicsModel
 from lib import ekf
 
+from fannypack.nn import spatial_softmax
+
 import fannypack
 
 class PandaEKFDynamicsModel(PandaSimpleDynamicsModel):
@@ -83,38 +85,63 @@ class PandaEKFMeasurementModel(ekf.KFMeasurementModel):
     todo: do we also have overall measurement class? or different for kf and pf?
     """
 
-    def __init__(self, units=16, state_dim=2):
+    def __init__(self, units=16, state_dim=2, use_states=False, spatial_softmax=True):
         super().__init__()
 
         obs_pose_dim = 3
         obs_sensors_dim = 7
-        self.state_dim = state_dim
+        image_dim = (32, 32)
 
-        self.observation_image_layers = nn.Sequential(
-            nn.Conv2d(in_channels=1, out_channels=3, kernel_size=3, padding=1),
-            nn.ReLU(inplace=True),
-            resblocks.Conv2d(channels=3),
-            nn.Conv2d(in_channels=3, out_channels=1, kernel_size=3, padding=1),
-            nn.ReLU(inplace=True),
-            nn.Flatten(),  # 32 * 32 = 1024
-            nn.Linear(1024, units),
-            nn.ReLU(inplace=True),
-            resblocks.Linear(units),
-        )
+        self.state_dim = state_dim
+        self.use_states = use_states
+
+        if self.use_states:
+            shared_layer_dim = units * 4
+        else:
+            shared_layer_dim = units * 3
+
+        if spatial_softmax:
+            self.observation_image_layers = nn.Sequential(
+                nn.Conv2d(in_channels=1, out_channels=32, kernel_size=5, padding=2),
+                nn.ReLU(inplace=True),
+                resblocks.Conv2d(channels=32, kernel_size=3),
+                nn.Conv2d(in_channels=32, out_channels=16, kernel_size=3, padding=1),
+                nn.ReLU(inplace=True),
+                nn.Conv2d(in_channels=16, out_channels=8, kernel_size=3, padding=1),
+                spatial_softmax.SpatialSoftmax(32, 32, 8),
+                nn.Linear(8 * 2, units),
+                nn.ReLU(inplace=True),
+                resblocks.Linear(units),
+            )
+        else:
+            self.observation_image_layers = nn.Sequential(
+                nn.Conv2d(in_channels=1, out_channels=32, kernel_size=5, padding=2),
+                nn.ReLU(inplace=True),
+                resblocks.Conv2d(channels=32, kernel_size=3),
+                nn.Conv2d(in_channels=32, out_channels=16, kernel_size=3, padding=1),
+                nn.ReLU(inplace=True),
+                nn.Conv2d(in_channels=16, out_channels=8, kernel_size=3, padding=1),
+                nn.Flatten(),  # 32 * 32 = 1024
+                nn.Linear(2 * 32 * 32, units),
+                nn.ReLU(inplace=True),
+                resblocks.Linear(units),
+            )
+
+
         self.observation_pose_layers = nn.Sequential(
             nn.Linear(obs_pose_dim, units),
-            resblocks.Linear(units),
+            resblocks.Linear(units, activation = 'leaky_relu'),
         )
         self.observation_sensors_layers = nn.Sequential(
             nn.Linear(obs_sensors_dim, units),
-            resblocks.Linear(units),
+            resblocks.Linear(units, activation = 'leaky_relu'),
         )
         self.state_layers = nn.Sequential(
             nn.Linear(self.state_dim, units),
         )
 
         self.shared_layers = nn.Sequential(
-            nn.Linear(units * 4, units * 2),
+            nn.Linear(shared_layer_dim, units * 2),
             nn.ReLU(inplace=True),
             resblocks.Linear(2*units),
             resblocks.Linear(2*units),
@@ -160,11 +187,14 @@ class PandaEKFMeasurementModel(ekf.KFMeasurementModel):
         state_features = self.state_layers(states)
         assert state_features.shape == (N, self.units)
 
+        if self.use_states:
         # (N, units)
-        merged_features = torch.cat(
-            (observation_features, state_features),
-            dim=1)
-        assert merged_features.shape == (N, self.units * 4)
+            merged_features = torch.cat(
+                (observation_features, state_features),
+                dim=1)
+            assert merged_features.shape == (N, self.units * 4)
+        else:
+            merged_features = observation_features
 
         shared_features = self.shared_layers(merged_features)
         assert shared_features.shape == (N, self.units * 2)
