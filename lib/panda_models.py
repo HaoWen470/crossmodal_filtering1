@@ -86,14 +86,15 @@ class PandaDynamicsModel(dpf.DynamicsModel):
             self.state_noise_stddev = self.default_state_noise_stddev
 
         self.state_layers = nn.Sequential(
-            nn.Linear(state_dim, units // 2),
-            resblocks.Linear(units // 2),
+            nn.Linear(state_dim, units),
+            resblocks.Linear(units),
         )
         self.control_layers = nn.Sequential(
-            nn.Linear(control_dim, units // 2),
-            resblocks.Linear(units // 2),
+            nn.Linear(control_dim, units),
+            resblocks.Linear(units),
         )
         self.shared_layers = nn.Sequential(
+            nn.Linear(units * 2, units),
             resblocks.Linear(units),
             resblocks.Linear(units),
             resblocks.Linear(units),
@@ -115,22 +116,22 @@ class PandaDynamicsModel(dpf.DynamicsModel):
 
         # (N, control_dim) => (N, units // 2)
         control_features = self.control_layers(controls)
-        assert control_features.shape == (N, self.units // 2)
+        assert control_features.shape == (N, self.units)
 
         # (N, units // 2) => (N, M, units // 2)
         control_features = control_features[:, np.newaxis, :].expand(
-            N, M, self.units // 2)
-        assert control_features.shape == (N, M, self.units // 2)
+            N, M, self.units)
+        assert control_features.shape == (N, M, self.units)
 
         # (N, M, state_dim) => (N, M, units // 2)
         state_features = self.state_layers(states_prev)
-        assert state_features.shape == (N, M, self.units // 2)
+        assert state_features.shape == (N, M, self.units)
 
         # (N, M, units)
         merged_features = torch.cat(
             (control_features, state_features),
             dim=2)
-        assert merged_features.shape == (N, M, self.units)
+        assert merged_features.shape == (N, M, self.units * 2)
 
         # (N, M, units * 2) => (N, M, state_dim)
         state_update = self.shared_layers(merged_features)
@@ -172,7 +173,7 @@ class PandaSimpleMeasurementModel(dpf.MeasurementModel):
         N, M, _ = states.shape
 
         # Return (N, M)
-        return torch.ones((N, M))
+        return torch.ones((N, M), device=states.device)
 
 
 class PandaMeasurementModel(dpf.MeasurementModel):

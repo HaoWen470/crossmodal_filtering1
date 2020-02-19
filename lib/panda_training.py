@@ -9,9 +9,14 @@ from fannypack import utils
 from . import dpf
 
 
-def train_dynamics_recurrent(buddy, pf_model, dataloader, log_interval=10):
+def train_dynamics_recurrent(
+        buddy, pf_model, dataloader, log_interval=10, loss_type="l1"):
+
+    assert loss_type in ('l1', 'l2', 'huber', 'peter')
+
     # Train dynamics only for 1 epoch
     # Train for 1 epoch
+    epoch_losses = []
     for batch_idx, batch in enumerate(tqdm_notebook(dataloader)):
         # Transfer to GPU and pull out batch data
         batch_gpu = utils.to_device(batch, buddy._device)
@@ -23,11 +28,13 @@ def train_dynamics_recurrent(buddy, pf_model, dataloader, log_interval=10):
         assert batch_controls.shape == (N, timesteps, control_dim)
 
         # Track current states as they're propagated through our dynamics model
-        states = batch_states[:, 0, :]
-        assert states.shape == (N, state_dim)
+        prev_states = batch_states[:, 0, :]
+        assert prev_states.shape == (N, state_dim)
 
         # Accumulate losses from each timestep
         losses = []
+        magnitude_losses = []
+        direction_losses = []
 
         # Compute some state deltas for debugging
         label_deltas = np.mean(utils.to_numpy(
@@ -40,26 +47,68 @@ def train_dynamics_recurrent(buddy, pf_model, dataloader, log_interval=10):
             # Propagate current states through dynamics model
             controls = batch_controls[:, t, :]
             new_states = pf_model.dynamics_model(
-                states[:, np.newaxis, :],  # Add particle dimension
+                prev_states[:, np.newaxis, :],  # Add particle dimension
                 controls,
-                noisy=True,
+                noisy=False,
             ).squeeze(dim=1)  # Remove particle dimension
             assert new_states.shape == (N, state_dim)
 
+            # Compute deltas
+            pred_delta = prev_states - new_states
+            label_delta = batch_states[:, t - 1, :] - batch_states[:, t, :]
+            assert pred_delta.shape == (N, state_dim)
+            assert label_delta.shape == (N, state_dim)
+
             # Compute and add loss
-            mse_loss = F.mse_loss(batch_states[:, t, :], new_states)
-            losses.append(mse_loss)
+            if loss_type == 'l1':
+                # timestep_loss = F.l1_loss(pred_delta, label_delta)
+                timestep_loss = F.l1_loss(new_states, batch_states[:, t, :])
+            elif loss_type == 'l2':
+                # timestep_loss = F.mse_loss(pred_delta, label_delta)
+                timestep_loss = F.mse_loss(new_states, batch_states[:, t, :])
+            elif loss_type == 'huber':
+                # Note that the units our states are in will affect results
+                # for Huber
+                timestep_loss = F.smooth_l1_loss(
+                    batch_states[:, t, :], new_states)
+            elif loss_type == 'peter':
+                # Use a Peter loss
+                # Currently broken
+                assert False
+
+                pred_magnitude = torch.norm(pred_delta, dim=1)
+                label_magnitude = torch.norm(label_delta, dim=1)
+                assert pred_magnitude.shape == (N, )
+                assert label_magnitude.shape == (N, )
+
+                # pred_direction = pred_delta / (pred_magnitude + 1e-8)
+                # label_direction = label_delta / (label_magnitude + 1e-8)
+                # assert pred_direction.shape == (N, state_dim)
+                # assert label_direction.shape == (N, state_dim)
+
+                # Compute loss
+                magnitude_loss = F.mse_loss(pred_magnitude, label_magnitude)
+                direction_loss = 
+                timestep_loss = magnitude_loss + direction_loss
+
+                magnitude_losses.append(magnitude_loss)
+                direction_losses.append(direction_loss)
+
+            else:
+                assert False
+            losses.append(timestep_loss)
 
             # Compute delta and update states
             pred_deltas.append(np.mean(
-                utils.to_numpy(new_states - states) ** 2
+                utils.to_numpy(new_states - prev_states) ** 2
             ))
-            states = new_states
+            prev_states = new_states
 
         pred_deltas = np.array(pred_deltas)
         assert pred_deltas.shape == (timesteps - 1, )
 
         loss = torch.mean(torch.stack(losses))
+        epoch_losses.append(loss)
         buddy.minimize(
             loss,
             optimizer_name="dynamics",
@@ -75,7 +124,14 @@ def train_dynamics_recurrent(buddy, pf_model, dataloader, log_interval=10):
                 buddy.log("Pred delta mean", pred_deltas.mean())
                 buddy.log("Pred delta std", pred_deltas.std())
 
-    print("Epoch loss:", np.mean(utils.to_numpy(losses)))
+                if magnitude_losses:
+                    buddy.log("Magnitude loss",
+                              torch.mean(torch.tensor(magnitude_losses)))
+                if direction_losses:
+                    buddy.log("Direction loss",
+                              torch.mean(torch.tensor(direction_losses)))
+
+    print("Epoch loss:", np.mean(utils.to_numpy(epoch_losses)))
 
 
 def train_dynamics(buddy, pf_model, dataloader, log_interval=10):
@@ -83,10 +139,10 @@ def train_dynamics(buddy, pf_model, dataloader, log_interval=10):
 
     # Train dynamics only for 1 epoch
     # Train for 1 epoch
-    for batch_idx, batch in enumerate(dataloader):
+    for batch_idx, batch in enumerate(tqdm_notebook(dataloader)):
         # Transfer to GPU and pull out batch data
         batch_gpu = utils.to_device(batch, buddy._device)
-        prev_states, unused_observations, controls, new_states = batch_gpu
+        prev_states, _unused_observations, controls, new_states = batch_gpu
 
         prev_states += utils.to_torch(np.random.normal(
             0, 0.05, size=prev_states.shape), device=buddy._device)
@@ -95,7 +151,8 @@ def train_dynamics(buddy, pf_model, dataloader, log_interval=10):
             prev_states, controls, noisy=False)
         new_states_pred = new_states_pred.squeeze(dim=1)
 
-        mse_pos = torch.mean((new_states_pred - new_states) ** 2, axis=0)
+        mse_pos = F.mse_loss(new_states_pred, new_states)
+        # mse_pos = torch.mean((new_states_pred - new_states) ** 2, axis=0)
         loss = mse_pos
         losses.append(utils.to_numpy(loss))
 
@@ -121,7 +178,7 @@ def train_dynamics(buddy, pf_model, dataloader, log_interval=10):
                 pred_mean = new_states_pred.mean(dim=0)
                 buddy.log("Predicted pos mean", pred_mean[0])
 
-            print(".", end="")
+            # print(".", end="")
     print("Epoch loss:", np.mean(losses))
 
 
