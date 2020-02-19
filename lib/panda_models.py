@@ -160,7 +160,6 @@ class PandaDynamicsModel(dpf.DynamicsModel):
         state_update = state_update_direction * state_update_gate
         assert state_update.shape == dimensions + (state_dim, )
 
-
         # Compute new states
         states_new = states_prev + state_update
         assert states_new.shape == dimensions + (state_dim,)
