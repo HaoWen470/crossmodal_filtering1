@@ -110,7 +110,7 @@ def train_dynamics_recurrent(
         epoch_losses.append(loss)
         buddy.minimize(
             loss,
-            optimizer_name="dynamics",
+            optimizer_name="dynamics_recurrent",
             checkpoint_interval=10000)
 
         if buddy.optimizer_steps % log_interval == 0:
