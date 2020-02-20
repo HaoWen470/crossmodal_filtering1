@@ -291,12 +291,11 @@ def train_e2e(buddy, pf_model, dataloader, log_interval=2, loss_type="gmm"):
 
 
 def rollout(pf_model, trajectories, start_time=0, max_timesteps=300,
-            particle_count=100, noisy_dynamics=True):
+            particle_count=100, noisy_dynamics=True, true_initial=False):
     # To make things easier, we're going to cut all our trajectories to the
     # same length :)
     end_time = np.min([len(s) for s, _, _ in trajectories] +
                       [start_time + max_timesteps])
-    predicted_states = [[states[start_time]] for states, _, _ in trajectories]
     actual_states = [states[start_time:end_time]
                      for states, _, _ in trajectories]
 
@@ -307,8 +306,18 @@ def rollout(pf_model, trajectories, start_time=0, max_timesteps=300,
     device = next(pf_model.parameters()).device
 
     particles = np.zeros((N, M, state_dim))
-    for i in range(N):
-        particles[i, :] = predicted_states[i][0]
+    if true_initial:
+        for i in range(N):
+            particles[i, :] = trajectories[i][0, 0]
+    else:
+        # Distribute initial particles randomly
+        particles += np.random.normal(0, 1.0, size=particles.shape)
+
+    # Populate the initial state estimate as just the estimate of our particles
+    # This is a little hacky
+    predicted_states = [[np.mean(particles[i], axis=0)]
+                        for i in range(len(trajectories))]
+
     particles = utils.to_torch(particles, device=device)
     log_weights = torch.ones((N, M), device=device) * (-np.log(M))
 
