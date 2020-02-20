@@ -188,7 +188,7 @@ def train_measurement(buddy, pf_model, dataloader, log_interval=10):
     for batch_idx, batch in enumerate(tqdm_notebook(dataloader)):
         # Transfer to GPU and pull out batch data
         batch_gpu = utils.to_device(batch, buddy._device)
-        noisy_states, observations, log_likelihoods = batch_gpu
+        noisy_states, observations, log_likelihoods, _ = batch_gpu
 
         noisy_states = noisy_states[:, np.newaxis, :]
         pred_likelihoods = pf_model.measurement_model(
