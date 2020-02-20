@@ -66,18 +66,14 @@ def load_trajectories(*paths, use_vision=True,
                 # Define our state:  we expect this to be:
                 # (x, y, cos theta, sin theta, mass, friction)
                 # TODO: add mass, friction
-                state_dim = 2
+                state_dim = 4
                 states = np.full((timesteps, state_dim), np.nan)
 
                 states[:, :2] = trajectory['Cylinder0_pos'][:, :2]  # x, y
+                states[:, 2] = trajectory['Cylinder0_mass'][:, 0]
+                states[:, 3] = trajectory['Cylinder0_friction'][:, 0]
                 # states[:, 2] = np.cos(trajectory['object_z_angle'])
                 # states[:, 3] = np.sin(trajectory['object_z_angle'])
-                # states[:, 4] = trajectory['Cylinder0_mass'][:, 0]
-                # states[:, 5] = trajectory['Cylinder0_friction'][:, 0]
-
-                # Zero out everything but XY position
-                # TODO: remove this
-                states[:, 2:] *= 0
 
                 # Pull out observations
                 ## This is currently consisted of:
@@ -123,31 +119,32 @@ def load_trajectories(*paths, use_vision=True,
                 assert controls.shape == (timesteps, 7)
 
                 # Normalization
-
                 observations['gripper_pos'] -= np.array(
-                    [[0.46806443, -0.0017836, 0.88028437]], dtype=np.float32)
+                    [[0.46950656, -0.00149735, 0.8806295]], dtype=np.float32)
                 observations['gripper_pos'] /= np.array(
-                    [[0.02410769, 0.02341035, 0.04018243]], dtype=np.float32)
+                    [[0.0206707, 0.01683187, 0.03990189]], dtype=np.float32)
                 observations['gripper_sensors'] -= np.array(
-                    [[4.9182904e-01, 4.5039989e-02, -3.2791464e+00,
-                      -3.3874984e-03, 1.1552566e-02, -8.4817986e-04,
-                      2.1303751e-01]], dtype=np.float32)
+                    [[8.0803037e-01, 1.4953758e-01, -2.2113798e+00,
+                      -1.2972655e-02, 4.1824762e-02, -1.6733757e-03,
+                      2.2329584e-01]], dtype=np.float32)
                 observations['gripper_sensors'] /= np.array(
-                    [[1.6152629, 1.666905, 1.9186896, 0.14219016, 0.14232528,
-                      0.01675198, 0.40950698]], dtype=np.float32)
-                states -= np.array([[0.4970164, -0.00916641]])
-                states /= np.array([[0.0572766, 0.06118315]])
+                    [[4.209215, 3.4691353, 5.310162, 0.31712046, 0.359572,
+                      0.03229636, 0.41688326]], dtype=np.float32)
+                states -= np.array(
+                    [[0.5048217, -0.00865443, 0.95155574, 1.09104244]])
+                states /= np.array(
+                    [[0.04554373, 0.04647204, 0.29797012, 0.27289274]])
                 controls -= np.array(
-                    [[3.2848225e-04, 8.7676758e-01, 4.6962801e-01,
-                      4.6772522e-01, -8.7855840e-01, 4.1107172e-01,
-                      2.1303751e-01]], dtype=np.float32)
+                    [[6.4739131e-04, 8.7711328e-01, 4.7107404e-01,
+                      4.6886143e-01, -8.7865490e-01, 4.0998977e-01,
+                      2.2329584e-01]], dtype=np.float32)
                 controls /= np.array(
-                    [[0.03975769, 0.07004428, 0.03383452, 0.04635485,
-                      0.07224426, 0.05950112, 0.40950698]], dtype=np.float32)
+                    [[0.03678134, 0.06976463, 0.03146667, 0.04152509,
+                      0.07042319, 0.05888154, 0.41688326]], dtype=np.float32)
 
                 trajectories.append((states, observations, controls))
 
-    ## Uncomment this line to generate the lines required to normalize data
+    # Uncomment this line to generate the lines required to normalize data
     # _print_normalization(trajectories)
 
     return trajectories
@@ -300,7 +297,8 @@ class PandaMeasurementDataset(torch.utils.data.Dataset):
         log_likelihood = np.asarray(scipy.stats.multivariate_normal.logpdf(
             noisy_state[:2], mean=state[:2], cov=np.diag(self.stddev[:2] ** 2)))
 
-        return utils.to_torch((noisy_state, observation, log_likelihood, state))
+        return utils.to_torch(
+            (noisy_state, observation, log_likelihood, state))
 
     def __len__(self):
         """

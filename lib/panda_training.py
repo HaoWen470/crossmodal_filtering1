@@ -379,15 +379,14 @@ def eval_rollout(predicted_states, actual_states, plot=False):
                          c=color(i),
                          **actual_label_arg)
 
+            rmse = np.mean(
+                (predicted_states[:, :, j] - actual_states[:, :, j]) ** 2)
+
+            plt.title(f"State #{j} // RMSE = {rmse}")
             plt.xlabel("Timesteps")
-            plt.ylabel("Position")
+            plt.ylabel("Value")
             plt.legend()
             plt.show()
-
-    print("X RMSE: ", np.sqrt(
-        np.mean((predicted_states[:, :, 0] - actual_states[:, :, 0])**2)))
-    print("Y RMSE: ", np.sqrt(
-        np.mean((predicted_states[:, :, 1] - actual_states[:, :, 1])**2)))
 
     # predicted_angles = np.arctan2(predicted_states[:, :, 3], predicted_states[:, :, 2])
     # actual_angles = np.arctan2(actual_states[:, :, 3], actual_states[:, :, 2])

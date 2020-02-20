@@ -23,8 +23,8 @@ class PandaSimpleDynamicsModel(dpf.DynamicsModel):
         0.05,  # y
         # 1e-10,  # cos theta
         # 1e-10,  # sin theta
-        # 1e-10,  # mass
-        # 1e-10,  # friction
+        0.05,  # mass
+        0.05,  # friction
     )
 
     def __init__(self, state_noise_stddev=None):
@@ -72,16 +72,15 @@ class PandaDynamicsModel(dpf.DynamicsModel):
         0.05,  # y
         # 1e-10,  # cos theta
         # 1e-10,  # sin theta
-        # 1e-10,  # mass
-        # 1e-10,  # friction
+        0.05,  # mass
+        0.05,  # friction
     )
-
 
     def __init__(self, state_noise_stddev=None, units=32, use_particles=True):
 
         super().__init__()
 
-        state_dim = 2
+        state_dim = 4
         control_dim = 7
         self.use_particles = use_particles
 
@@ -146,13 +145,13 @@ class PandaDynamicsModel(dpf.DynamicsModel):
 
         # (N, M, state_dim) => (N, M, units // 2)
         state_features = self.state_layers(states_prev)
-        assert state_features.shape == dimensions+ (self.units, )
+        assert state_features.shape == dimensions + (self.units, )
 
         # (N, M, units)
         merged_features = torch.cat(
             (control_features, state_features),
             dim=-1)
-        assert merged_features.shape == dimensions +  (self.units * 2, )
+        assert merged_features.shape == dimensions + (self.units * 2, )
 
         # (N, M, units * 2) => (N, M, state_dim + 1)
         output_features = self.shared_layers(merged_features)
@@ -213,15 +212,27 @@ class PandaMeasurementModel(dpf.MeasurementModel):
 
         obs_pos_dim = 3
         obs_sensors_dim = 7
-        state_dim = 2
+        state_dim = 4
 
         self.observation_image_layers = nn.Sequential(
-            nn.Conv2d(in_channels=1, out_channels=32, kernel_size=5, padding=2),
+            nn.Conv2d(
+                in_channels=1,
+                out_channels=32,
+                kernel_size=5,
+                padding=2),
             nn.ReLU(inplace=True),
             resblocks.Conv2d(channels=32, kernel_size=3),
-            nn.Conv2d(in_channels=32, out_channels=16, kernel_size=3, padding=1),
+            nn.Conv2d(
+                in_channels=32,
+                out_channels=16,
+                kernel_size=3,
+                padding=1),
             nn.ReLU(inplace=True),
-            nn.Conv2d(in_channels=16, out_channels=8, kernel_size=3, padding=1),
+            nn.Conv2d(
+                in_channels=16,
+                out_channels=8,
+                kernel_size=3,
+                padding=1),
             nn.Flatten(),  # 32 * 32 * 8
             nn.Linear(8 * 32 * 32, units),
             nn.ReLU(inplace=True),
@@ -299,9 +310,10 @@ class PandaEKFMeasurementModel(dpf.MeasurementModel):
     todo: do we also have overall measurement class? or different for kf and pf?
     """
 
-    def __init__(self, units=64, state_dim=2, use_states=False, use_spatial_softmax=False):
+    def __init__(self, units=64, use_states=False, use_spatial_softmax=False):
         super().__init__()
 
+        state_dim = 2
         obs_pose_dim = 3
         obs_sensors_dim = 7
         image_dim = (32, 32)
@@ -311,12 +323,24 @@ class PandaEKFMeasurementModel(dpf.MeasurementModel):
 
         if use_spatial_softmax:
             self.observation_image_layers = nn.Sequential(
-                nn.Conv2d(in_channels=1, out_channels=32, kernel_size=5, padding=2),
+                nn.Conv2d(
+                    in_channels=1,
+                    out_channels=32,
+                    kernel_size=5,
+                    padding=2),
                 nn.ReLU(inplace=True),
                 resblocks.Conv2d(channels=32, kernel_size=3),
-                nn.Conv2d(in_channels=32, out_channels=16, kernel_size=3, padding=1),
+                nn.Conv2d(
+                    in_channels=32,
+                    out_channels=16,
+                    kernel_size=3,
+                    padding=1),
                 nn.ReLU(inplace=True),
-                nn.Conv2d(in_channels=16, out_channels=16, kernel_size=3, padding=1),
+                nn.Conv2d(
+                    in_channels=16,
+                    out_channels=16,
+                    kernel_size=3,
+                    padding=1),
                 spatial_softmax.SpatialSoftmax(32, 32, 16),
                 nn.Linear(16 * 2, units),
                 nn.ReLU(inplace=True),
@@ -324,12 +348,24 @@ class PandaEKFMeasurementModel(dpf.MeasurementModel):
             )
         else:
             self.observation_image_layers = nn.Sequential(
-                nn.Conv2d(in_channels=1, out_channels=32, kernel_size=5, padding=2),
+                nn.Conv2d(
+                    in_channels=1,
+                    out_channels=32,
+                    kernel_size=5,
+                    padding=2),
                 nn.ReLU(inplace=True),
                 resblocks.Conv2d(channels=32, kernel_size=3),
-                nn.Conv2d(in_channels=32, out_channels=16, kernel_size=3, padding=1),
+                nn.Conv2d(
+                    in_channels=32,
+                    out_channels=16,
+                    kernel_size=3,
+                    padding=1),
                 nn.ReLU(inplace=True),
-                nn.Conv2d(in_channels=16, out_channels=2, kernel_size=3, padding=1),
+                nn.Conv2d(
+                    in_channels=16,
+                    out_channels=2,
+                    kernel_size=3,
+                    padding=1),
                 nn.Flatten(),  # 32 * 32 * 8
                 nn.Linear(2 * 32 * 32, units),
                 nn.ReLU(inplace=True),
@@ -390,21 +426,22 @@ class PandaEKFMeasurementModel(dpf.MeasurementModel):
 
         assert observation_features.shape == (N, self.units * 3)
 
-
-
         if self.use_states:
             # (N, units)
                     # (N, state_dim) => (N, units)
             state_features = self.state_layers(states)
         else:
-            state_features = self.state_layers(torch.zeros(states.shape).to(states.device))    
+            state_features = self.state_layers(
+                torch.zeros(
+                    states.shape).to(
+                    states.device))
         assert state_features.shape == (N, self.units)
-        
+
         merged_features = torch.cat(
             (observation_features, state_features),
             dim=1)
         assert merged_features.shape == (N, self.units * 4)
-        
+
         shared_features = self.shared_layers(merged_features)
         assert shared_features.shape == (N, self.units * 2)
 

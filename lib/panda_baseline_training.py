@@ -114,7 +114,8 @@ def rollout_lstm(model, trajectories, max_timesteps=300):
     # Propagate through model
     model.reset_hidden_states(utils.to_torch(actual_states[:, 0, :]))
     device = next(model.parameters()).device
-    predicted_states = utils.to_numpy(model(utils.to_torch(batched_observations, device)))
+    predicted_states = utils.to_numpy(
+        model(utils.to_torch(batched_observations, device)))
 
     # Reset model
     model.batch_size = orig_batch_size
@@ -151,12 +152,11 @@ def eval_rollout(predicted_states, actual_states, plot=False):
                          c=color(i),
                          **actual_label_arg)
 
+            rmse = np.mean(
+                (predicted_states[:, :, j] - actual_states[:, :, j]) ** 2)
+
+            plt.title(f"State #{j} // RMSE = {rmse}")
             plt.xlabel("Timesteps")
-            plt.ylabel("Position")
+            plt.ylabel("Value")
             plt.legend()
             plt.show()
-
-    print("X RMSE: ", np.sqrt(
-        np.mean((predicted_states[:, :, 0] - actual_states[:, :, 0])**2)))
-    print("Y RMSE: ", np.sqrt(
-        np.mean((predicted_states[:, :, 1] - actual_states[:, :, 1])**2)))
