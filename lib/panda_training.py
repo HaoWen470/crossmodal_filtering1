@@ -308,7 +308,7 @@ def rollout(pf_model, trajectories, start_time=0, max_timesteps=300,
     particles = np.zeros((N, M, state_dim))
     if true_initial:
         for i in range(N):
-            particles[i, :] = trajectories[i][0, 0]
+            particles[i, :] = trajectories[i][0][0]
     else:
         # Distribute initial particles randomly
         particles += np.random.normal(0, 1.0, size=particles.shape)

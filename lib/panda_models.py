@@ -161,11 +161,18 @@ class PandaDynamicsModel(dpf.DynamicsModel):
         if self.use_particles or self.jacobian:
             state_update_direction = output_features[:, :, :state_dim]
             state_update_gate = torch.sigmoid(output_features[:, :, -1:])
+
+            # Zero out mass/friction update
+            state_update_direction[:, :, 2:4] *= 0.
         else:
             state_update_direction = output_features[:, :state_dim]
             state_update_gate = torch.sigmoid(output_features[:, -1:])
+
+            # Zero out mass/friction update
+            state_update_direction[:, 2:4] *= 0.
         state_update = state_update_direction * state_update_gate
         assert state_update.shape == dimensions + (state_dim,)
+
         # Compute new states
         states_new = states_prev + state_update
         assert states_new.shape == dimensions + (state_dim,)
@@ -313,7 +320,7 @@ class PandaEKFMeasurementModel(dpf.MeasurementModel):
     def __init__(self, units=64, use_states=False, use_spatial_softmax=False):
         super().__init__()
 
-        state_dim = 2
+        state_dim = 4
         obs_pose_dim = 3
         obs_sensors_dim = 7
         image_dim = (32, 32)
