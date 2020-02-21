@@ -5,7 +5,7 @@ from tqdm import tqdm_notebook
 
 from fannypack import utils
 
-from . import dpf
+from lib import dpf
 
 
 def train_dynamics(buddy, ekf_model, dataloader, log_interval=10):

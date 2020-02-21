@@ -1,136 +1,97 @@
 import numpy as np
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 
 from fannypack.nn import resblocks
 from fannypack import utils
-from lib.ekf_models import PandaEKFDynamicsModel, PandaEKFMeasurementModel
-from lib.modality_models import MissingModalityMeasurementModel
-from lib.ekf import KalmanFilterNetwork
+import torch.optim as optim
 
 
-def training_weighted_fusion(buddy, dataloader, log_interval=2, fusion_type="weighted"):
+class WeightedFusionModel(nn.Module):
 
-    # full_modality_model
-    full_measurement = PandaEKFMeasurementModel()
-    full_dynamics = PandaEKFDynamicsModel()
-    full_model = KalmanFilterNetwork(full_dynamics, full_measurement)
+    def __init__(self, image_model, force_model, weight_model, filter_type="ekf", fusion_type="weighted"):
+        super().__init__()
 
-    # image_modality_model
-    image_measurement = MissingModalityMeasurementModel("image")
-    image_dynamics = PandaEKFDynamicsModel()
-    image_model = KalmanFilterNetwork(image_dynamics, image_measurement)
+        self.image_model = image_model
+        self.force_model = force_model
+        self.weight_model = weight_model
+
+        self.filter_type = filter_type
+        self.fusion_type = fusion_type
+
+        assert self.filter_type in ["ekf", "dpf"]
+        assert self.fusion_type in ["weighted", "poe"]
+
+    def forward(self, states_prev, observations, controls, state_sigma_prev = None, log_weights_prev = None):
+
+        if self.filter_type == "ekf":
+            assert state_sigma_prev is not None
 
 
-    # force_modality_model
-    force_measurement = MissingModalityMeasurementModel("gripper_sensors")
-    force_dynamics =  PandaEKFDynamicsModel()
-    force_model = KalmanFilterNetwork(force_dynamics, force_measurement)
 
-    weight_model = CrossModalWeights()
-
-    for batch_idx, batch in enumerate((dataloader)):
-        # for batch_idx, batch in enumerate((dataloader_full)):
-        # Transfer to GPU and pull out batch data
-        batch_gpu = utils.to_device(batch, buddy._device)
-        _, batch_states, batch_obs, batch_controls = batch_gpu
-        # N = batch size, M = particle count
-        N, timesteps, control_dim = batch_controls.shape
-        N, timesteps, state_dim = batch_states.shape
-        assert batch_controls.shape == (N, timesteps, control_dim)
-
-        state = batch_states[:, 0, :]
-        state_sigma = torch.eye(state.shape[-1], device=buddy._device) * 0.001
-        state_sigma = state_sigma.unsqueeze(0).repeat(N, 1, 1)
-
-        # Accumulate losses from each timestep
-        losses = []
-        for t in range(1, timesteps - 1):
-            prev_state = state
-            prev_state_sigma = state_sigma
-
-            full_state, full_state_sigma = full_model.forward(
-                prev_state,
-                prev_state_sigma,
-                utils.DictIterator(batch_obs)[:, t, :],
-                batch_controls[:, t, :],
+            image_state, image_state_sigma = self.image_model.forward(
+                states_prev,
+                state_sigma_prev,
+                observations,
+                controls,
                 noisy_dynamics=True
             )
 
-            image_state, image_state_sigma = image_model.forward(
-                prev_state,
-                prev_state_sigma,
-                utils.DictIterator(batch_obs)[:, t, :],
-                batch_controls[:, t, :],
+            force_state, force_state_sigma = self.force_model.forward(
+                states_prev,
+                state_sigma_prev,
+                observations,
+                controls,
                 noisy_dynamics=True
             )
 
-            force_state, force_state_sigma = force_model.forward(
-                prev_state,
-                prev_state_sigma,
-                utils.DictIterator(batch_obs)[:, t, :],
-                batch_controls[:, t, :],
-                noisy_dynamics=True
-            )
+            force_beta, image_beta, _ = self.weight_model.forward(observations)
+            weights = [image_beta, force_beta]
+            states_pred = [image_state, force_state]
+            state_sigma_pred = [image_state_sigma, force_state_sigma]
 
-            weights = weight_model.forward(utils.DictIterator(batch_obs)[:, t, :])
+            if self.fusion_type == "weighted":
+                state = self.weighted_average(states_pred, weights)
+                state_sigma = self.weighted_average(state_sigma_pred, weights)
+            elif self.fusion_type == "poe":
+                state = self.product_of_experts(states_pred, weights)
+                state_sigma = self.weighted_average(state_sigma_pred, weights)
 
-            state_preds = [full_state, image_state, force_state]
-            state_sigma_preds = [full_state_sigma, image_state_sigma, force_state_sigma]
+            return state, state_sigma, force_state, image_state
 
-            if fusion_type == "weighted":
-                state = weighted_average(state_preds, weights)
-                state_sigma = weighted_average(state_sigma_preds, weights)
-            elif fusion_type == "poe":
-                state = product_of_experts(state_preds, weights)
-                state_sigma = product_of_experts(state_sigma_preds, weights)
-            else:
-                raise Error("Fusion type not implemented")
+    def weighted_average(self, predictions: list, weights: list):
+        assert len(predictions) == len(weights)
 
-            assert state.shape == batch_states[:, t, :].shape
-            loss = torch.mean((state - batch_states[:, t, :]) ** 2)
-            losses.append(loss)
-        buddy.minimize(
-            torch.mean(torch.stack(losses)),
-            optimizer_name="ekf",
-            checkpoint_interval=500)
+        predictions = torch.stack(predictions)
+        weights = torch.stack(weights)
+        epsilon = 0.0001
+        weights = weights / (torch.sum(weights, dim=0) + epsilon)
 
-        if buddy.optimizer_steps % log_interval == 0:
-            with buddy.log_scope("ekf"):
-                buddy.log("Training loss", loss)
+        weighted_average = torch.sum(weights*predictions, dim=0)
 
-        print("Epoch loss:", np.mean(utils.to_numpy(losses)))
-    buddy.save_checkpoint()
+        # print("pred: ", predictions)
+        # print("weights" , weights)
+        # print("avg:" , weighted_average)
+        return weighted_average
 
 
-def weighted_average(predictions: list, weights: list):
-    assert len(predictions) == len(weights)
+    def product_of_experts(self, predictions: list, weights: list):
+        assert len(predictions) == len(weights)
+        weights = torch.stack(weights)
+        predictions = torch.stack(predictions)
+        T= 1.0/weights
+        mu = (predictions * T).sum(0) * (1.0/ T.sum(0))
+        var = (1.0/T.sum(0))
 
-    predictions = torch.stack(predictions)
-    weights = torch.stack(weights)
-    weights = weights / torch.sum(weights, dim=0)
-
-    return torch.sum(weights*predictions, dim=0)
+        return mu, var
 
 
-def product_of_experts(predictions: list, weights: list):
-    assert len(predictions) == len(weights)
 
-    weights = torch.stack(weights)
-    predictions = torch.stack(predictions)
-    T= 1.0/weights
-
-    mu = (predictions * T).sum(0) * (1.0/ T.sum(0))
-    var = (1.0/T.sum(0))
-
-    return mu, var
 
 
 class CrossModalWeights(nn.Module):
 
-    def __init__(self, state_dim=2, units=16):
-        super().__init__()
+    def __init__(self, state_dim=2, units=32):
         super().__init__()
 
         obs_pose_dim = 3
@@ -138,60 +99,67 @@ class CrossModalWeights(nn.Module):
         self.state_dim = state_dim
 
         self.observation_image_layers = nn.Sequential(
-            nn.Conv2d(in_channels=1, out_channels=3, kernel_size=3, padding=1),
+            nn.Conv2d(in_channels=1, out_channels=32, kernel_size=5, padding=2),
             nn.ReLU(inplace=True),
-            resblocks.Conv2d(channels=3),
-            nn.Conv2d(in_channels=3, out_channels=1, kernel_size=3, padding=1),
+            resblocks.Conv2d(channels=32, kernel_size=3),
+            nn.Conv2d(in_channels=32, out_channels=16, kernel_size=3, padding=1),
             nn.ReLU(inplace=True),
-            nn.Flatten(),  # 32 * 32 = 1024
-            nn.Linear(1024, units),
+            nn.Conv2d(in_channels=16, out_channels=2, kernel_size=3, padding=1),
+            nn.Flatten(),  # 32 * 32 * 8
+            nn.Linear(2 * 32 * 32, units),
             nn.ReLU(inplace=True),
             resblocks.Linear(units),
         )
         self.observation_pose_layers = nn.Sequential(
             nn.Linear(obs_pose_dim, units),
-            resblocks.Linear(units),
+            resblocks.Linear(units, activation='leaky_relu'),
         )
         self.observation_sensors_layers = nn.Sequential(
             nn.Linear(obs_sensors_dim, units),
-            resblocks.Linear(units),
+            resblocks.Linear(units, activation='leaky_relu'),
         )
 
         self.shared_layers = nn.Sequential(
-            nn.Linear(units * 3, units * 2),
+            nn.Linear(units * 3, units * 3),
             nn.ReLU(inplace=True),
-            resblocks.Linear(3 * units),
             resblocks.Linear(3 * units),
         )
 
         self.force_prop_layer = nn.Sequential(
-            nn.Linear(units, self.state_dim),
+            nn.Linear(units, units),
             nn.ReLU(inplace=True),
-            resblocks.Linear(self.state_dim),
+            nn.Linear(units, self.state_dim),
         )
 
         self.image_prop_layer = nn.Sequential(
-            nn.Linear(units, self.state_dim),
+            nn.Linear(units, units),
             nn.ReLU(inplace=True),
-            resblocks.Linear(self.state_dim),
+            nn.Linear(units, self.state_dim),
         )
 
         self.fusion_layer = nn.Sequential(
-            nn.Linear(units, self.state_dim),
+            nn.Linear(units, units),
             nn.ReLU(inplace=True),
-            resblocks.Linear(self.state_dim),
+            nn.Linear(units, self.state_dim),
         )
+
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d) or isinstance(m, nn.ConvTranspose2d):
+                nn.init.kaiming_normal_(m.weight.data)
+                if m.bias is not None:
+                    m.bias.data.zero_()
+            elif isinstance(m, nn.BatchNorm2d):
+                m.weight.data.fill_(1)
+                m.bias.data.zero_()
 
         self.units = units
 
-    def forward(self, observations, states):
+    def forward(self, observations):
         assert type(observations) == dict
 
         # N := distinct trajectory count (batch size)
 
         N = observations['image'].shape[0]
-
-        assert states.shape == (N, self.state_dim)
 
         # Construct observations feature vector
         # (N, obs_dim)
@@ -202,18 +170,20 @@ class CrossModalWeights(nn.Module):
             self.observation_sensors_layers(
                 observations['gripper_sensors']),
         ), dim=1)
-
         assert observation_features.shape == (N, self.units * 3)
-
 
         shared_features = self.shared_layers(observation_features)
         assert shared_features.shape == (N, self.units * 3)
 
         force_prop_beta = self.force_prop_layer(shared_features[:, :self.units])
-        image_prop_beta = self.image_prop_layer(shared_features[:, self.units:self.units * 2])
+        image_beta = self.image_prop_layer(shared_features[:, self.units:self.units * 2])
         fusion_beta = self.fusion_layer(shared_features[:, self.units * 2:])
 
-        return force_prop_beta, image_prop_beta, fusion_beta
+        force_prop_beta = torch.abs(force_prop_beta)
+        image_beta = torch.abs(image_beta)
+        fusion_beta = torch.abs(fusion_beta)
+
+        return  image_beta,force_prop_beta, fusion_beta
 
 
 
