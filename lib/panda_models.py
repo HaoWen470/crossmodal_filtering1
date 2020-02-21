@@ -208,7 +208,7 @@ class PandaSimpleMeasurementModel(dpf.MeasurementModel):
 
 class PandaMeasurementModel(dpf.MeasurementModel):
 
-    def __init__(self, units=32):
+    def __init__(self, units=64):
         super().__init__()
 
         obs_pos_dim = 3
@@ -216,13 +216,14 @@ class PandaMeasurementModel(dpf.MeasurementModel):
         state_dim = 2
 
         self.observation_image_layers = nn.Sequential(
-            nn.Conv2d(in_channels=1, out_channels=3, kernel_size=3, padding=1),
+            nn.Conv2d(in_channels=1, out_channels=32, kernel_size=5, padding=2),
             nn.ReLU(inplace=True),
-            resblocks.Conv2d(channels=3),
-            nn.Conv2d(in_channels=3, out_channels=1, kernel_size=3, padding=1),
+            resblocks.Conv2d(channels=32, kernel_size=3),
+            nn.Conv2d(in_channels=32, out_channels=16, kernel_size=3, padding=1),
             nn.ReLU(inplace=True),
-            nn.Flatten(),  # 32 * 32 = 1024
-            nn.Linear(1024, units),
+            nn.Conv2d(in_channels=16, out_channels=8, kernel_size=3, padding=1),
+            nn.Flatten(),  # 32 * 32 * 8
+            nn.Linear(8 * 32 * 32, units),
             nn.ReLU(inplace=True),
             resblocks.Linear(units),
         )

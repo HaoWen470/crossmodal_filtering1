@@ -8,7 +8,7 @@ from fannypack.nn import resblocks
 
 class PandaLSTMModel(nn.Module):
 
-    def __init__(self, batch_size, units=32):
+    def __init__(self, batch_size, units=64):
 
         obs_pos_dim = 3
         obs_sensors_dim = 7
@@ -24,13 +24,14 @@ class PandaLSTMModel(nn.Module):
         self.image_rows = 32
         self.image_cols = 32
         self.observation_image_layers = nn.Sequential(
-            nn.Conv2d(in_channels=1, out_channels=4, kernel_size=3, padding=1),
+            nn.Conv2d(in_channels=1, out_channels=32, kernel_size=5, padding=2),
             nn.ReLU(inplace=True),
-            # resblocks.Conv2d(channels=4),
-            nn.Conv2d(in_channels=4, out_channels=1, kernel_size=3, padding=1),
+            resblocks.Conv2d(channels=32, kernel_size=3),
+            nn.Conv2d(in_channels=32, out_channels=16, kernel_size=3, padding=1),
             nn.ReLU(inplace=True),
-            nn.Flatten(),
-            nn.Linear((self.image_rows * self.image_cols), units),
+            nn.Conv2d(in_channels=16, out_channels=8, kernel_size=3, padding=1),
+            nn.Flatten(),  # 32 * 32 * 8
+            nn.Linear(8 * 32 * 32, units),
             nn.ReLU(inplace=True),
             resblocks.Linear(units),
         )
