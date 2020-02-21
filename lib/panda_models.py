@@ -255,7 +255,6 @@ class PandaMeasurementModel(dpf.MeasurementModel):
 
         # N := distinct trajectory count
         # M := particle count
-
         N, M, _ = states.shape
 
         # Construct observations feature vector
@@ -298,7 +297,11 @@ class PandaEKFMeasurementModel(dpf.MeasurementModel):
     todo: do we also have overall measurement class? or different for kf and pf?
     """
 
-    def __init__(self, units=64, state_dim=2, use_states=False, use_spatial_softmax=False):
+    def __init__(self, units=64,
+                 state_dim=2,
+                 use_states=False,
+                 use_spatial_softmax=False,
+                 missing_modalities = None ):
         super().__init__()
 
         obs_pose_dim = 3
@@ -307,6 +310,15 @@ class PandaEKFMeasurementModel(dpf.MeasurementModel):
 
         self.state_dim = state_dim
         self.use_states = use_states
+
+        # missing modalities
+        self.modalities = ["image", 'gripper_sensors', 'gripper_pos']
+        if missing_modalities:
+            if type(missing_modalities) == list:
+                self.modalities = [mod for mod in self.modalities if mod not in missing_modalities]
+            else:
+                assert missing_modalities in self.modalities
+                self.modalities.pop(self.modalities.index(missing_modalities))
 
         if use_spatial_softmax:
             self.observation_image_layers = nn.Sequential(
@@ -347,8 +359,9 @@ class PandaEKFMeasurementModel(dpf.MeasurementModel):
             nn.Linear(self.state_dim, units),
         )
 
+        # missing modalities
         self.shared_layers = nn.Sequential(
-            nn.Linear(units * 4, units * 2),
+            nn.Linear(units * (len(self.modalities) + 1), units * 2),
             nn.ReLU(inplace=True),
             resblocks.Linear(2 * units),
             resblocks.Linear(2 * units),
@@ -367,6 +380,14 @@ class PandaEKFMeasurementModel(dpf.MeasurementModel):
         )
 
         self.units = units
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d) or isinstance(m, nn.ConvTranspose2d):
+                nn.init.kaiming_normal_(m.weight.data)
+                if m.bias is not None:
+                    m.bias.data.zero_()
+            elif isinstance(m, nn.BatchNorm2d):
+                m.weight.data.fill_(1)
+                m.bias.data.zero_()
 
     def forward(self, observations, states):
         assert type(observations) == dict
@@ -374,22 +395,23 @@ class PandaEKFMeasurementModel(dpf.MeasurementModel):
         # N := distinct trajectory count (batch size)
 
         N = observations['image'].shape[0]
-
         assert states.shape == (N, self.state_dim)
 
         # Construct observations feature vector
         # (N, obs_dim)
-        observation_features = torch.cat((
-            self.observation_image_layers(
-                observations['image'][:, np.newaxis, :, :]),
-            self.observation_pose_layers(observations['gripper_pos']),
-            self.observation_sensors_layers(
-                observations['gripper_sensors']),
-        ), dim=1)
+        obs = []
+        if "image" in self.modalities:
+            obs.append(self.observation_image_layers(
+                observations['image'][:, np.newaxis, :, :]))
+        if "gripper_pos" in self.modalities:
+            obs.append(self.observation_pose_layers(observations['gripper_pos']))
+        if "gripper_sensors" in self.modalities:
+            obs.append(self.observation_sensors_layers(
+                observations['gripper_sensors']))
 
-        assert observation_features.shape == (N, self.units * 3)
-
-
+        observation_features = torch.cat(obs, dim=1)
+        # missing modalities
+        assert observation_features.shape == (N, self.units * len(self.modalities))
 
         if self.use_states:
             # (N, units)
@@ -402,7 +424,8 @@ class PandaEKFMeasurementModel(dpf.MeasurementModel):
         merged_features = torch.cat(
             (observation_features, state_features),
             dim=1)
-        assert merged_features.shape == (N, self.units * 4)
+        # missing modalities
+        assert merged_features.shape == (N, self.units * (len(self.modalities)+1))
         
         shared_features = self.shared_layers(merged_features)
         assert shared_features.shape == (N, self.units * 2)

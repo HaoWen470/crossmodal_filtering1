@@ -16,20 +16,22 @@ class MissingModalityMeasurementModel(ekf.KFMeasurementModel):
     def __init__(self, missing_modality, units=16, state_dim=2):
         super().__init__(units, state_dim)
 
+
+        self.modalities = ["image", 'gripper_sensors', 'gripper_pos']
+        if type(missing_modality) == list:
+            self.modalities = [mod for mod in self.modalities if mod not in missing_modality]
+        else:
+            assert missing_modality in self.modalities
+            self.modalities.pop(self.modalities.index(missing_modality))
+
+        dims = (len(self.modalities))
+
         self.shared_layers = nn.Sequential(
-            nn.Linear(units * 3, units * 2),
+            nn.Linear(units * dims, units * 2),
             nn.ReLU(inplace=True),
             resblocks.Linear(2 * units),
             resblocks.Linear(2 * units),
         )
-
-        modalities = ["image", 'gripper_sensors', 'gripper_pos']
-        if missing_modality not in modalities:
-            raise ValueError("Missing modality {} not part of {} ".format(missing_modality, modalities))
-        else:
-            self.missing_modality = missing_modality
-
-
     def forward(self, observations, states):
         assert type(observations) == dict
 
@@ -38,24 +40,17 @@ class MissingModalityMeasurementModel(ekf.KFMeasurementModel):
         N = observations['image'].shape[0]
 
         assert states.shape == (N, self.state_dim)
+        obs = []
+        if "image" in self.modalities:
+            obs.append( self.observation_image_layers(
+                observations['image'][:, np.newaxis, :, :]))
+        if "gripper_pos" in self.modalities:
+            obs.append(self.observation_pose_layers(observations['gripper_pos']))
+        if "gripper_sensors" in self.modalities:
+            obs.append(self.observation_sensors_layers(
+                observations['gripper_sensors']))
 
-        obs = [
-            self.observation_image_layers(
-                observations['image'][:, np.newaxis, :, :]),
-            self.observation_pose_layers(observations['gripper_pos']),
-            self.observation_sensors_layers(
-                observations['gripper_sensors']),
-        ]
-        # Construct observations feature vector
-        # (N, obs_dim)
-        if self.missing_modality == "image":
-            obs.pop(0)
-        elif self.missing_modality == "gripper_pos":
-            obs.pop(1)
-        else:
-            obs.pop(2)
         observation_features = torch.cat(obs, dim=1)
-
         assert observation_features.shape == (N, self.units * 3)
 
         # (N, state_dim) => (N, units)
