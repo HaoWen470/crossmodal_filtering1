@@ -98,24 +98,31 @@ def rollout_lstm(model, trajectories, max_timesteps=300):
     actual_states = np.zeros((trajectory_count, timesteps, state_dim))
 
     batched_observations = {}
+    batched_controls = []
 
     # Trajectories is a list of (states, observations, controls)
-    for i, (states, observations, _) in enumerate(trajectories):
+    for i, (states, observations, controls) in enumerate(trajectories):
         states = states[:timesteps]
         observations = utils.DictIterator(observations)[:timesteps]
 
         utils.DictIterator(batched_observations).append(observations)
+        batched_controls.append(controls[:timesteps])
 
         assert states.shape == (timesteps, state_dim)
-        actual_states[i] = states
+        actual_states[i] = states * 0 + 0.1
 
     utils.DictIterator(batched_observations).convert_to_numpy()
+    batched_controls = np.array(batched_controls)
 
     # Propagate through model
     model.reset_hidden_states(utils.to_torch(actual_states[:, 0, :]))
     device = next(model.parameters()).device
     predicted_states = utils.to_numpy(
-        model(utils.to_torch(batched_observations, device)))
+        model(
+            utils.to_torch(batched_observations, device),
+            utils.to_torch(batched_controls, device),
+        )
+    )
 
     # Reset model
     model.batch_size = orig_batch_size
