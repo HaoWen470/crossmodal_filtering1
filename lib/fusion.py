@@ -7,28 +7,21 @@ from fannypack import utils
 import torch.optim as optim
 
 
-class WeightedFusionModel(nn.Module):
+class KalmanFusionModel(nn.Module):
 
-    def __init__(self, image_model, force_model, weight_model, filter_type="ekf", fusion_type="weighted"):
+    def __init__(self, image_model, force_model, weight_model, fusion_type="weighted"):
         super().__init__()
 
         self.image_model = image_model
         self.force_model = force_model
         self.weight_model = weight_model
-
-        self.filter_type = filter_type
         self.fusion_type = fusion_type
 
-        assert self.filter_type in ["ekf", "dpf"]
-        assert self.fusion_type in ["weighted", "poe"]
+        assert self.fusion_type in ["weighted", "poe", "sigma"]
 
-    def forward(self, states_prev, observations, controls, state_sigma_prev = None, log_weights_prev = None):
+    def forward(self, states_prev, observations, controls, state_sigma_prev = None):
 
-        if self.filter_type == "ekf":
             assert state_sigma_prev is not None
-
-
-
             image_state, image_state_sigma = self.image_model.forward(
                 states_prev,
                 state_sigma_prev,
@@ -47,15 +40,18 @@ class WeightedFusionModel(nn.Module):
 
             force_beta, image_beta, _ = self.weight_model.forward(observations)
             weights = [image_beta, force_beta]
+            sigma_weights = [torch.diag_embed(image_beta, offset=0, dim1=-2, dim2=-1), torch.diag_embed(force_beta, offset=0, dim1=-2, dim2=-1)]
             states_pred = [image_state, force_state]
             state_sigma_pred = [image_state_sigma, force_state_sigma]
 
             if self.fusion_type == "weighted":
                 state = self.weighted_average(states_pred, weights)
-                state_sigma = self.weighted_average(state_sigma_pred, weights)
+                state_sigma = self.weighted_average(state_sigma_pred, sigma_weights)
             elif self.fusion_type == "poe":
                 state = self.product_of_experts(states_pred, weights)
-                state_sigma = self.weighted_average(state_sigma_pred, weights)
+                state_sigma = self.weighted_average(state_sigma_pred, sigma_weights)
+
+            #todo: sigma weighting and poe -- make sure you divide
 
             return state, state_sigma, force_state, image_state
 
@@ -74,7 +70,6 @@ class WeightedFusionModel(nn.Module):
         # print("avg:" , weighted_average)
         return weighted_average
 
-
     def product_of_experts(self, predictions: list, weights: list):
         assert len(predictions) == len(weights)
         weights = torch.stack(weights)
@@ -84,10 +79,6 @@ class WeightedFusionModel(nn.Module):
         var = (1.0/T.sum(0))
 
         return mu, var
-
-
-
-
 
 class CrossModalWeights(nn.Module):
 
@@ -129,18 +120,21 @@ class CrossModalWeights(nn.Module):
             nn.Linear(units, units),
             nn.ReLU(inplace=True),
             nn.Linear(units, self.state_dim),
+            nn.Sigmoid(),
         )
 
         self.image_prop_layer = nn.Sequential(
             nn.Linear(units, units),
             nn.ReLU(inplace=True),
             nn.Linear(units, self.state_dim),
+            nn.Sigmoid(),
         )
 
         self.fusion_layer = nn.Sequential(
             nn.Linear(units, units),
             nn.ReLU(inplace=True),
             nn.Linear(units, self.state_dim),
+            nn.Sigmoid(),
         )
 
         for m in self.modules():
@@ -178,10 +172,6 @@ class CrossModalWeights(nn.Module):
         force_prop_beta = self.force_prop_layer(shared_features[:, :self.units])
         image_beta = self.image_prop_layer(shared_features[:, self.units:self.units * 2])
         fusion_beta = self.fusion_layer(shared_features[:, self.units * 2:])
-
-        force_prop_beta = torch.abs(force_prop_beta)
-        image_beta = torch.abs(image_beta)
-        fusion_beta = torch.abs(fusion_beta)
 
         return  image_beta,force_prop_beta, fusion_beta
 
