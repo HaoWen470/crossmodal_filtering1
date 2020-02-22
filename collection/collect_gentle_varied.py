@@ -53,7 +53,7 @@ if __name__ == "__main__":
 
     #todo: set friction and mass ranges here
     mass = [0.5, 1.5]
-    friction = [0.5, 1.5]
+    friction = [0.5, 0.5]
 
     env = robosuite.make(
         args.environment,
