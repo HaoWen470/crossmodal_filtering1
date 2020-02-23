@@ -19,7 +19,7 @@ class KalmanFusionModel(nn.Module):
 
         assert self.fusion_type in ["weighted", "poe", "sigma"]
 
-    def forward(self, states_prev, observations, controls, state_sigma_prev = None):
+    def forward(self, states_prev, state_sigma_prev, observations, controls, ):
 
             assert state_sigma_prev is not None
             image_state, image_state_sigma = self.image_model.forward(
