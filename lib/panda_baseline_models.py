@@ -8,17 +8,15 @@ from fannypack.nn import resblocks
 
 class PandaLSTMModel(nn.Module):
 
-    def __init__(self, batch_size, units=64):
+    def __init__(self, units=64):
 
         obs_pos_dim = 3
         obs_sensors_dim = 7
         control_dim = 7
-        state_dim = 2
+        self.state_dim = 2
 
         super().__init__()
-        self.batch_size = batch_size
-        self.lstm_hidden_dim = state_dim
-        self.state_dim = self.lstm_hidden_dim
+        self.lstm_hidden_dim = 16
         self.lstm_num_layers = 2
         self.units = units
 
@@ -62,16 +60,19 @@ class PandaLSTMModel(nn.Module):
         # )
         self.observation_pose_layers = nn.Sequential(
             nn.Linear(obs_pos_dim, units),
+            nn.ReLU(inplace=True),
             resblocks.Linear(units),
         )
         self.observation_sensors_layers = nn.Sequential(
             nn.Linear(obs_sensors_dim, units),
+            nn.ReLU(inplace=True),
             resblocks.Linear(units),
         )
 
         # Control layers
         self.control_layers = nn.Sequential(
             nn.Linear(control_dim, units),
+            nn.ReLU(inplace=True),
             resblocks.Linear(units),
         )
 
@@ -91,63 +92,66 @@ class PandaLSTMModel(nn.Module):
             batch_first=True)
 
         # Define the output layer
-        self.output_layers = nn.Identity()
+        self.output_layers = nn.Sequential(
+            nn.Linear(self.lstm_hidden_dim, units),
+            nn.ReLU(inplace=True),
+            # resblocks.Linear(units),
+            nn.Linear(units, self.state_dim),
+        )
 
-    def reset_hidden_states(self, initial_states=None):
-        device = next(self.parameters()).device
-        shape = (self.lstm_num_layers, self.batch_size, self.lstm_hidden_dim)
-        self.hidden = (torch.zeros(shape, device=device),
-                       torch.zeros(shape, device=device))
-
-        if initial_states is not None:
-            assert initial_states.shape == (
-                self.batch_size, self.lstm_hidden_dim)
-
-            # Set hidden state (h0) of layer #1 to our initial states
-            self.hidden[0][1] = initial_states
+    # def reset_hidden_states(self, initial_states=None):
+    #     device = next(self.parameters()).device
+    #     shape = (self.lstm_num_layers, self.batch_size, self.lstm_hidden_dim)
+    #     self.hidden = (torch.zeros(shape, device=device),
+    #                    torch.zeros(shape, device=device))
+    #
+    #     if initial_states is not None:
+    #         assert initial_states.shape == (
+    #             self.batch_size, self.lstm_hidden_dim)
+    #
+    #         # Set hidden state (h0) of layer #1 to our initial states
+    #         self.hidden[0][1] = initial_states
 
     def forward(self, observations, controls):
         # Observations: key->value
         # where shape of value is (batch, seq_len, *)
+        batch_size = observations['image'].shape[0]
         sequence_length = observations['image'].shape[1]
-        assert observations['image'].shape[0] == self.batch_size
+        assert observations['image'].shape[0] == batch_size
+        assert observations['gripper_pos'].shape[0] == batch_size
         assert observations['gripper_pos'].shape[1] == sequence_length
         assert observations['gripper_sensors'].shape[1] == sequence_length
 
         # Forward pass through observation encoders
         reshaped_images = observations['image'].reshape(
-            self.batch_size * sequence_length, 1, self.image_rows, self.image_cols)
+            batch_size * sequence_length, 1, self.image_rows, self.image_cols)
         image_features = self.observation_image_layers(
             reshaped_images
-        ).reshape((self.batch_size, sequence_length, self.units))
+        ).reshape((batch_size, sequence_length, self.units))
 
-        # TODO: remove * 0's
         merged_features = torch.cat((
             image_features,
-            self.observation_pose_layers(observations['gripper_pos']) * 0,
+            self.observation_pose_layers(observations['gripper_pos']),
             self.observation_sensors_layers(
-                observations['gripper_sensors']) * 0,
-            self.control_layers(controls) * 0,
+                observations['gripper_sensors']),
+            self.control_layers(controls),
         ), dim=-1)
 
         assert merged_features.shape == (
-            self.batch_size, sequence_length, self.units * 4)
+            batch_size, sequence_length, self.units * 4)
 
         fused_features = self.fusion_layers(merged_features)
         assert fused_features.shape == (
-            self.batch_size, sequence_length, self.units)
+            batch_size, sequence_length, self.units)
 
         # Forward pass through LSTM layer
-        lstm_out, self.hidden = self.lstm(
-            fused_features,
-            self.hidden
-        )
+        lstm_out, _unused_hidden = self.lstm(fused_features)
         assert lstm_out.shape == (
-            self.batch_size, sequence_length, self.lstm_hidden_dim)
+            batch_size, sequence_length, self.lstm_hidden_dim)
 
         predicted_states = self.output_layers(lstm_out)
         assert predicted_states.shape == (
-            self.batch_size, sequence_length, self.state_dim)
+            batch_size, sequence_length, self.state_dim)
         return predicted_states
 
 
