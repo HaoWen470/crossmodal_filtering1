@@ -10,7 +10,7 @@ class PandaLSTMModel(nn.Module):
 
     def __init__(self, batch_size, units=32):
 
-        obs_pose_dim = 7
+        obs_pos_dim = 3
         obs_sensors_dim = 7
         state_dim = 2
 
@@ -34,8 +34,8 @@ class PandaLSTMModel(nn.Module):
             nn.ReLU(inplace=True),
             resblocks.Linear(units),
         )
-        self.observation_pose_layers = nn.Sequential(
-            nn.Linear(obs_pose_dim, units),
+        self.observation_pos_layers = nn.Sequential(
+            nn.Linear(obs_pos_dim, units),
             resblocks.Linear(units),
         )
         self.observation_sensors_layers = nn.Sequential(
@@ -61,8 +61,10 @@ class PandaLSTMModel(nn.Module):
         self.output_layers = nn.Identity()
 
     def reset_hidden_states(self, initial_states=None):
-        self.hidden = (torch.zeros(self.lstm_num_layers, self.batch_size, self.lstm_hidden_dim),
-                       torch.zeros(self.lstm_num_layers, self.batch_size, self.lstm_hidden_dim))
+        device = next(self.parameters()).device
+        shape = (self.lstm_num_layers, self.batch_size, self.lstm_hidden_dim)
+        self.hidden = (torch.zeros(shape, device=device),
+                       torch.zeros(shape, device=device))
 
         if initial_states is not None:
             assert initial_states.shape == (
@@ -76,7 +78,7 @@ class PandaLSTMModel(nn.Module):
         # where shape of value is (batch, seq_len, *)
         sequence_length = observations['image'].shape[1]
         assert observations['image'].shape[0] == self.batch_size
-        assert observations['gripper_pose'].shape[1] == sequence_length
+        assert observations['gripper_pos'].shape[1] == sequence_length
         assert observations['gripper_sensors'].shape[1] == sequence_length
 
         # Forward pass through observation encoders
@@ -87,7 +89,7 @@ class PandaLSTMModel(nn.Module):
 
         observation_features = torch.cat((
             image_features,
-            self.observation_pose_layers(observations['gripper_pose']),
+            self.observation_pos_layers(observations['gripper_pos']),
             self.observation_sensors_layers(observations['gripper_sensors']),
         ), dim=-1)
 
@@ -121,7 +123,7 @@ class PandaBaselineModel(nn.Module):
         self.use_prev_state = use_prev_state
         self.units = units
 
-        obs_pose_dim = 7
+        obs_pos_dim = 7
         obs_sensors_dim = 7
         state_dim = 2
         control_dim = 14
@@ -155,8 +157,8 @@ class PandaBaselineModel(nn.Module):
             nn.ReLU(inplace=True),
             resblocks.Linear(units),
         )
-        self.observation_pose_layers = nn.Sequential(
-            nn.Linear(obs_pose_dim, units),
+        self.observation_pos_layers = nn.Sequential(
+            nn.Linear(obs_pos_dim, units),
             resblocks.Linear(units),
         )
         self.observation_sensors_layers = nn.Sequential(
@@ -191,7 +193,7 @@ class PandaBaselineModel(nn.Module):
         observation_features = torch.cat((
             self.observation_image_layers(
                 observations['image'][:, np.newaxis, :, :]),
-            self.observation_pose_layers(observations['gripper_pose']),
+            self.observation_pos_layers(observations['gripper_pos']),
             self.observation_sensors_layers(
                 observations['gripper_sensors']),
         ), dim=1)
