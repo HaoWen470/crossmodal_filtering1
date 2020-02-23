@@ -18,6 +18,7 @@ class PandaLSTMModel(nn.Module):
         super().__init__()
         self.batch_size = batch_size
         self.lstm_hidden_dim = state_dim
+        self.state_dim = self.lstm_hidden_dim
         self.lstm_num_layers = 2
         self.units = units
 
@@ -114,16 +115,18 @@ class PandaLSTMModel(nn.Module):
         assert observations['gripper_sensors'].shape[1] == sequence_length
 
         # Forward pass through observation encoders
-        reshaped_images = observations['image'][:, :, :, :].reshape(
-            sequence_length * self.batch_size, -1, self.image_rows, self.image_cols)
+        reshaped_images = observations['image'].reshape(
+            self.batch_size * sequence_length, 1, self.image_rows, self.image_cols)
         image_features = self.observation_image_layers(
             reshaped_images
         ).reshape((self.batch_size, sequence_length, self.units))
 
+        # TODO: remove * 0's
         merged_features = torch.cat((
             image_features,
             self.observation_pose_layers(observations['gripper_pos']) * 0,
-            self.observation_sensors_layers(observations['gripper_sensors']) * 0,
+            self.observation_sensors_layers(
+                observations['gripper_sensors']) * 0,
             self.control_layers(controls) * 0,
         ), dim=-1)
 
@@ -142,10 +145,9 @@ class PandaLSTMModel(nn.Module):
         assert lstm_out.shape == (
             self.batch_size, sequence_length, self.lstm_hidden_dim)
 
-        # Only take the output from the final timestep
-        # Can pass on the entirety of lstm_out to the next layer if it is a
-        # seq2seq prediction
         predicted_states = self.output_layers(lstm_out)
+        assert predicted_states.shape == (
+            self.batch_size, sequence_length, self.state_dim)
         return predicted_states
 
 
@@ -226,7 +228,7 @@ class PandaBaselineModel(nn.Module):
         # (N, obs_dim)
         observation_features = torch.cat((
             self.observation_image_layers(
-                observations['image'][:, np.newaxis, :, :]),
+                observations['image'][:, np.newaxis, :, :]) * 0,
             self.observation_pose_layers(observations['gripper_pose']),
             self.observation_sensors_layers(
                 observations['gripper_sensors']),
