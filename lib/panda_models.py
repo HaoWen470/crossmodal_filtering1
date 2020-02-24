@@ -371,13 +371,13 @@ class PandaEKFMeasurementModel(dpf.MeasurementModel):
         self.r_layer = nn.Sequential(
             nn.Linear(units, self.state_dim),
             nn.ReLU(inplace=True),
-            resblocks.Linear(self.state_dim),
+            resblocks.Linear(self.state_dim, activation="relu_false"),
         )
 
         self.z_layer = nn.Sequential(
             nn.Linear(units, self.state_dim),
             nn.ReLU(inplace=True),
-            resblocks.Linear(self.state_dim),
+            resblocks.Linear(self.state_dim, activation="relu_false"),
         )
 
         self.units = units
@@ -431,10 +431,11 @@ class PandaEKFMeasurementModel(dpf.MeasurementModel):
         shared_features = self.shared_layers(merged_features)
         assert shared_features.shape == (N, self.units * 2)
 
-        z = self.z_layer(shared_features[:, :self.units])
+        shared_features_z = shared_features[:, :self.units].clone()
+        z = self.z_layer(shared_features_z)
         assert z.shape == (N, self.state_dim)
 
-        lt_hat = self.r_layer(shared_features[:, self.units:])
+        lt_hat = self.r_layer(shared_features[:, self.units:].clone())
         lt = torch.diag_embed(lt_hat, offset=0, dim1=-2, dim2=-1)
         assert lt.shape == (N, self.state_dim, self.state_dim)
 

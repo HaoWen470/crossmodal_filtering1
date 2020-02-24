@@ -14,12 +14,14 @@ def in_ipynb():
             return False
     except NameError:
         return False
-
-if in_ipynb():
-    print("notebook")
-    from tqdm import tqdm_notebook as tqdm
-else:
-    print("nope")
+try:
+    if in_ipynb():
+        print("notebook")
+        from tqdm import tqdm_notebook as tqdm
+    else:
+        print("nope")
+        from tqdm import tqdm
+except:
     from tqdm import tqdm
 
 from fannypack import utils
@@ -29,7 +31,7 @@ from . import dpf
 def train_dynamics_recurrent(
         buddy, kf_model, dataloader, log_interval=10,
         loss_type="l2",
-        optim_name="ekf_dynamics", checkpoint_interval=50):
+        optim_name="ekf_dynamics", checkpoint_interval=50, init_state_noise=0.5):
     epoch_losses = []
 
     assert loss_type in ('l1', 'l2')
@@ -112,7 +114,7 @@ def train_measurement(buddy, kf_model, dataloader, log_interval=10,
                       optim_name="ekf_measurement", checkpoint_interval=500):
     losses = []
 
-    for batch_idx, batch in enumerate(tqdm(dataloader)):
+    for batch_idx, batch in enumerate(dataloader):
         noisy_state, observation, _, state = fannypack.utils.to_device(batch, buddy._device)
         #         states = states[:,0,:]
         state_update, R = kf_model.measurement_model(observation, noisy_state)
@@ -131,8 +133,8 @@ def train_measurement(buddy, kf_model, dataloader, log_interval=10,
     print("Epoch loss:", np.mean(losses))
 
 def train_fusion(buddy, fusion_model, dataloader, log_interval=2,
-                 optim_name="fusion", obs_only=False):
-    for batch_idx, batch in enumerate(tqdm(dataloader)):
+                 optim_name="fusion", obs_only=False, init_state_noise=0.5):
+    for batch_idx, batch in enumerate(dataloader):
         # Transfer to GPU and pull out batch data
         batch_gpu = utils.to_device(batch, buddy._device)
         _, batch_states, batch_obs, batch_controls = batch_gpu
@@ -142,7 +144,7 @@ def train_fusion(buddy, fusion_model, dataloader, log_interval=2,
         assert batch_controls.shape == (N, timesteps, control_dim)
 
         state = batch_states[:, 0, :]
-        state_sigma = torch.eye(state.shape[-1], device=buddy._device) * 0.5
+        state_sigma = torch.eye(state.shape[-1], device=buddy._device) * init_state_noise
         state_sigma = state_sigma.unsqueeze(0).repeat(N, 1, 1)
 
         if obs_only:
@@ -154,10 +156,9 @@ def train_fusion(buddy, fusion_model, dataloader, log_interval=2,
                 obs_only = obs_only,
             )
         else:
-            sigma_vector = utility.diag_to_vector(state_sigma[0])
             dist = torch.distributions.Normal(
-                torch.tensor([0.]).to(state.device), sigma_vector)
-            noise = dist.sample((N,)).to(state.device)
+                torch.tensor([0.]), torch.ones(state.shape)*init_state_noise)
+            noise = dist.sample().to(state.device)
             state += noise
 
         losses_image = []
@@ -201,10 +202,11 @@ def train_fusion(buddy, fusion_model, dataloader, log_interval=2,
 def train_e2e(buddy, ekf_model, dataloader,
               log_interval=2, optim_name="ekf",
               obs_only=False,
-              checkpoint_interval = 50
+              checkpoint_interval = 50,
+              init_state_noise=0.5,
               ):
     # Train for 1 epoch
-    for batch_idx, batch in enumerate(tqdm(dataloader)):
+    for batch_idx, batch in enumerate(dataloader):
         # Transfer to GPU and pull out batch data
         batch_gpu = utils.to_device(batch, buddy._device)
         _, batch_states, batch_obs, batch_controls = batch_gpu
@@ -212,13 +214,12 @@ def train_e2e(buddy, ekf_model, dataloader,
         N, timesteps, control_dim = batch_controls.shape
         N, timesteps, state_dim = batch_states.shape
         assert batch_controls.shape == (N, timesteps, control_dim)
-
         state, _ = ekf_model.measurement_model.forward(utils.DictIterator(batch_obs)[:, 0, :], batch_states[:, 0, :]  )
-        state_sigma = torch.eye(state.shape[-1], device=buddy._device) * 0.5
+        state_sigma = torch.eye(state.shape[-1], device=buddy._device) * init_state_noise
         state_sigma = state_sigma.unsqueeze(0).repeat(N, 1, 1)
 
         if obs_only:
-            state, state_sigma, force_state, image_state = ekf_model.forward(
+            state, state_sigma = ekf_model.forward(
                 state,
                 state_sigma,
                 utils.DictIterator(batch_obs)[:, 0, :],
@@ -226,10 +227,9 @@ def train_e2e(buddy, ekf_model, dataloader,
                 obs_only=obs_only,
             )
         else:
-            sigma_vector = utility.diag_to_vector(state_sigma)
             dist = torch.distributions.Normal(
-                torch.tensor([0.]), sigma_vector)
-            noise = dist.sample((N,)).to(state.device)
+                torch.tensor([0.]), torch.ones(state.shape)*init_state_noise)
+            noise = dist.sample().to(state.device)
             state += noise
 
         ekf_model.measurement_model.use_states = True

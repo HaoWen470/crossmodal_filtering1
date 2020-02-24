@@ -43,7 +43,7 @@ class KalmanFusionModel(nn.Module):
                 obs_only = obs_only
             )
 
-            force_beta, image_beta  = self.weight_model.forward(observations)
+            force_beta, image_beta = self.weight_model.forward(observations)
 
             weights = torch.stack([image_beta, force_beta])
             weights_for_sigma = [torch.diag_embed(image_beta, offset=0, dim1=-2, dim2=-1), torch.diag_embed(force_beta, offset=0, dim1=-2, dim2=-1)]
@@ -52,7 +52,6 @@ class KalmanFusionModel(nn.Module):
             state_sigma_pred = torch.stack([image_state_sigma, force_state_sigma])
 
             sigma_as_weights = 1.0/(utility.diag_to_vector(state_sigma_pred)+1e-9)
-            print(sigma_as_weights)
 
             if self.fusion_type == "weighted":
                 state = self.weighted_average(states_pred, weights)
@@ -60,7 +59,7 @@ class KalmanFusionModel(nn.Module):
             elif self.fusion_type == "poe":
                 state = self.product_of_experts(states_pred, weights)
                 state_sigma = self.weighted_average(state_sigma_pred, weights_for_sigma)
-            elif self.fusion_type == "sigma_weighted":
+            elif self.fusion_type == "sigma":
                 state = self.weighted_average(states_pred, sigma_as_weights)
                 weighted_sigma = 1.0/(sigma_as_weights.sum(0))
                 state_sigma = torch.diag_embed(weighted_sigma, offset=0, dim1=-2, dim2=-1)
@@ -132,9 +131,9 @@ class CrossModalWeights(nn.Module):
         )
 
         if self.use_softmax:
-            self.shared_layer = nn.Sequential(
+            self.shared_layers = nn.Sequential(
                 nn.Linear(units * 3, units),
-                nn.ReLu(inplace=True),
+                nn.ReLU(inplace=True),
                 resblocks.Linear(units, units),
                 resblocks.Linear(units, units),
                 resblocks.Linear(units, units),

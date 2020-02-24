@@ -1,5 +1,6 @@
 import torch
 import fannypack
+
 from lib import panda_datasets
 from lib.ekf import KalmanFilterNetwork
 from fannypack import utils
@@ -17,13 +18,14 @@ if __name__ == '__main__':
     parser.add_argument(
         "--experiment_name",
         type=str,
-        default="fusion",
+        default="ekf",
     )
-    parser.add_argument("--data_size", type=int, default=100)
+    parser.add_argument("--data_size", type=int, default=100, choices=[10, 100, 1000])
     parser.add_argument("--batch", type=int, default=64)
     parser.add_argument("--pretrain", type=int, default=5)
-    parser.add_argument("--epochs", type=int, default=10, choices=[10, 100, 1000])
-    parser.add_argument("--fusion_type", type=str, choices=["weighted", "poe", "sigma"], default="weighted")
+    parser.add_argument("--epochs", type=int, default=10,)
+    parser.add_argument("--train", type=str, choices=[ "all", "ekf"], default="all")
+    parser.add_argument("--obs_only", action="store_true")
     args = parser.parse_args()
 
     experiment_name = args.experiment_name
@@ -33,7 +35,15 @@ if __name__ == '__main__':
         'use_vision': True,
         'vision_interval': 2,
     }
-
+    measurement = PandaEKFMeasurementModel()
+    dynamics = PandaDynamicsModel(use_particles=False)
+    ekf = KalmanFilterNetwork(dynamics, measurement)
+    print("Creating model...")
+    buddy = fannypack.utils.Buddy(experiment_name,
+                                  ekf,
+                                  optimizer_names=["ekf", "dynamics", "measurement"],
+                                  load_checkpoint=True,
+                                  )
     print("Creating dataset...")
     # dataset_full = panda_datasets.PandaParticleFilterDataset(
     #     'data/gentle_push_10.hdf5',
@@ -61,46 +71,42 @@ if __name__ == '__main__':
         **dataset_args
     )
 
-    measurement = PandaEKFMeasurementModel()
-    dynamics = PandaDynamicsModel(use_particles=False)
-    ekf = KalmanFilterNetwork(dynamics, measurement)
-    print("Creating model...")
-    buddy = fannypack.utils.Buddy(experiment_name,
-                                  ekf,
-                                  optimizer_names=["ekf", "dynamics", "measurement"],
-                                  load_checkpoint=True,
-                                  )
+    if args.train == "all":
 
-    dataloader_dynamics = torch.utils.data.DataLoader(
-        dynamics_recurrent_trainset, batch_size=args.batch, shuffle=True, num_workers=2, drop_last=True)
+        dataloader_dynamics = torch.utils.data.DataLoader(
+            dynamics_recurrent_trainset, batch_size=args.batch, shuffle=True, num_workers=2, drop_last=True)
 
-    for i in range(args.pretrain):
-        print("Training dynamics epoch", i)
-        training.train_dynamics_recurrent(buddy, ekf, dataloader_dynamics, optim_name="dynamics")
-        print()
+        for i in range(args.pretrain):
+            print("Training dynamics epoch", i)
+            training.train_dynamics_recurrent(buddy, ekf, dataloader_dynamics, optim_name="dynamics")
+            print()
 
-    buddy.save_checkpoint("phase_0_dynamics_pretrain")
+        buddy.save_checkpoint("phase_0_dynamics_pretrain")
 
-    measurement_trainset_loader = torch.utils.data.DataLoader(
-        dataset_measurement,
-        batch_size=args.batch,
-        shuffle=True,
-        num_workers=16)
+        measurement_trainset_loader = torch.utils.data.DataLoader(
+            dataset_measurement,
+            batch_size=args.batch*2,
+            shuffle=True,
+            num_workers=16)
 
-    for i in range(args.pretrain):
-        print("Training measurement epoch", i)
-        training.train_measurement(buddy, ekf, measurement_trainset_loader, log_interval=20, optim_name="measurement")
-        print()
+        for i in range(int(args.pretrain/2)):
+            print("Training measurement epoch", i)
+            training.train_measurement(buddy, ekf, measurement_trainset_loader, log_interval=20, optim_name="measurement")
+            print()
 
-    buddy.save_checkpoint("phase_2_measurement_pretrain")
+        buddy.save_checkpoint("phase_2_measurement_pretrain")
 
     e2e_trainset_loader = torch.utils.data.DataLoader(e2e_trainset, batch_size=args.batch, shuffle=True, num_workers=2)
 
     for i in range(args.epochs):
-        if i < args.epochs / 2:
-            obs_only = False
-        else:
+
+        if args.obs_only:
             obs_only = True
+        else:
+            if i < args.epochs / 2:
+                obs_only = False
+            else:
+                obs_only = True
         print("Training ekf epoch", i)
         training.train_e2e(buddy, ekf, e2e_trainset_loader,
                            optim_name="ekf", obs_only=obs_only)
