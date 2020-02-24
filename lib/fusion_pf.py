@@ -21,6 +21,8 @@ class ParticleFusionModel(nn.Module):
         N, M, state_dim = states_prev.shape
         assert log_weights_prev.shape == (N, M)
 
+        device = states_prev.device
+
         # If we aren't resampling, contract our particles within each
         # individual particle filter
         if resample:
@@ -89,12 +91,12 @@ class ParticleFusionModel(nn.Module):
             state_indices = distribution.sample((M, )).T
             assert state_indices.shape == (N, M)
 
-            states = torch.zeros((N, M, state_dim))
+            states = torch.zeros((N, M, state_dim), device=device)
             for i in range(N):
                 # We can probably optimize this loop out
                 states[i] = states_pred[i][state_indices[i]]
 
             # Uniform weights
-            log_weights = torch.zeros((N, M)) - np.log(M)
+            log_weights = torch.zeros((N, M), device=device) - np.log(M)
 
         return state_estimates, states, log_weights

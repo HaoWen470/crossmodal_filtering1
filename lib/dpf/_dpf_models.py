@@ -59,20 +59,21 @@ class ParticleFilterNetwork(nn.Module):
         # M := particle count
 
         N, M, state_dim = states_prev.shape
+        device = states_prev.device
         assert log_weights_prev.shape == (N, M)
         if output_particles is None:
             output_particles = M
 
         # Expand or contract particle set if we're not resampling
         if not resample and output_particles != M:
-            resized_states = torch.zeros((N, output_particles, state_dim))
-            resized_log_weights = torch.zeros((N, output_particles))
+            resized_states = torch.zeros((N, output_particles, state_dim), device=device)
+            resized_log_weights = torch.zeros((N, output_particles), device=device)
 
             for i in range(N):
                 # Randomly sample some particles from our input
                 # We sample with replacement only if necessary
                 indices = torch.multinomial(
-                    torch.ones_like(log_weights_pred),
+                    torch.ones_like(log_weights_pred, device=device),
                     num_samples=M,
                     replacement=(output_particles > M))
 
@@ -143,7 +144,7 @@ class ParticleFilterNetwork(nn.Module):
                 state_indices = distribution.sample((output_particles, )).T
                 assert state_indices.shape == (N, output_particles)
 
-                states = torch.zeros_like(states_pred)
+                states = torch.zeros_like(states_pred, device=device)
                 for i in range(N):
                     states[i] = states_pred[i][state_indices[i]]
 
@@ -157,7 +158,7 @@ class ParticleFilterNetwork(nn.Module):
 
                 # Uniform weights
                 log_weights = torch.zeros(
-                    (N, output_particles)) - np.log(output_particles)
+                    (N, output_particles), device=device) - np.log(output_particles)
         else:
             # Just use predicted states as output
             states = states_pred

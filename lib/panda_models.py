@@ -50,7 +50,9 @@ class PandaSimpleDynamicsModel(dpf.DynamicsModel):
         # Add noise if desired
         if noisy:
             dist = torch.distributions.Normal(
-                torch.zeros(self.state_dim), torch.tensor(self.state_noise_stddev))
+                torch.zeros(self.state_dim, dtype=torch.float32),
+                torch.FloatTensor(self.state_noise_stddev))
+
             noise = dist.sample((N, M)).to(states_new.device)
             assert noise.shape == (N, M, state_dim)
             states_new = states_new + noise
@@ -173,7 +175,8 @@ class PandaDynamicsModel(dpf.DynamicsModel):
             # TODO: implement version w/ learnable noise
             # (via reparemeterization; should be simple)
             dist = torch.distributions.Normal(
-                torch.zeros(self.state_dim), torch.tensor(self.state_noise_stddev))
+                torch.zeros(self.state_dim, dtype=torch.float32),
+                torch.FloatTensor(self.state_noise_stddev))
             noise = dist.sample(dimensions).to(states_new.device)
             assert noise.shape == dimensions + (state_dim,)
             states_new = states_new + noise
