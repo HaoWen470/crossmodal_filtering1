@@ -1,6 +1,7 @@
 import numpy as np
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 from fannypack.nn import resblocks
 from fannypack import utils
@@ -39,7 +40,7 @@ class KalmanFusionModel(nn.Module):
                 noisy_dynamics=True
             )
 
-            force_beta, image_beta, _ = self.weight_model.forward(observations)
+            force_beta, image_beta = self.weight_model.forward(observations)
             weights = [image_beta, force_beta]
             sigma_weights = [
                 torch.diag_embed(
@@ -96,7 +97,7 @@ class KalmanFusionModel(nn.Module):
 
 class CrossModalWeights(nn.Module):
 
-    def __init__(self, state_dim=2, units=32, use_softmax=False):
+    def __init__(self, state_dim=2, units=32, use_softmax=True):
         super().__init__()
 
         obs_pose_dim = 3
