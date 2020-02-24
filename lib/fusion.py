@@ -19,7 +19,14 @@ class KalmanFusionModel(nn.Module):
 
         assert self.fusion_type in ["weighted", "poe", "sigma"]
 
-    def forward(self, states_prev, state_sigma_prev, observations, controls, obs_only=False):
+
+    def diag_to_vector(self, batched_m):
+
+        l = [batched_m[:, i, i] for i in range(batched_m.shape[-1])]
+        l = torch.stack(l).transpose(0,1)
+        return l
+
+    def forward(self, states_prev, state_sigma_prev, observations, controls, obs_only=False ):
 
             assert state_sigma_prev is not None
             image_state, image_state_sigma = self.image_model.forward(
@@ -41,28 +48,32 @@ class KalmanFusionModel(nn.Module):
             )
 
             force_beta, image_beta, _ = self.weight_model.forward(observations)
-            weights = [image_beta, force_beta]
-            sigma_weights = [torch.diag_embed(image_beta, offset=0, dim1=-2, dim2=-1),
-                             torch.diag_embed(force_beta, offset=0, dim1=-2, dim2=-1)]
-            states_pred = [image_state, force_state]
-            state_sigma_pred = [image_state_sigma, force_state_sigma]
+
+            weights = torch.stack([image_beta, force_beta])
+            weights_for_sigma = [torch.diag_embed(image_beta, offset=0, dim1=-2, dim2=-1), torch.diag_embed(force_beta, offset=0, dim1=-2, dim2=-1)]
+            weights_for_sigma = torch.stack(weights_for_sigma)
+            states_pred = torch.stack([image_state, force_state])
+            state_sigma_pred = torch.stack([image_state_sigma, force_state_sigma])
+
+            sigma_as_weights = self.diag_to_vector(1.0/state_sigma_pred)
 
             if self.fusion_type == "weighted":
                 state = self.weighted_average(states_pred, weights)
-                state_sigma = self.weighted_average(state_sigma_pred, sigma_weights)
+                state_sigma = self.weighted_average(state_sigma_pred, weights_for_sigma)
             elif self.fusion_type == "poe":
-                state, _ = self.product_of_experts(states_pred, weights)
-                state_sigma = self.weighted_average(state_sigma_pred, sigma_weights)
-
-            #todo: sigma weighting and poe -- make sure you divide
+                state = self.product_of_experts(states_pred, weights)
+                state_sigma = self.weighted_average(state_sigma_pred, weights_for_sigma)
+            elif self.fusion_type == "sigma_weighted":
+                state = self.weighted_average(states_pred, sigma_as_weights)
+                weighted_sigma = 1.0/(sigma_as_weights.sum(0))
+                state_sigma = torch.diag_embed(weighted_sigma, offset=0, dim1=-2, dim2=-1)
 
             return state, state_sigma, force_state, image_state
 
-    def weighted_average(self, predictions: list, weights: list):
-        assert len(predictions) == len(weights)
+    def weighted_average(self, predictions, weights):
 
-        predictions = torch.stack(predictions)
-        weights = torch.stack(weights)
+        assert predictions.shape == weights.shape
+
         epsilon = 0.0001
         weights = weights / (torch.sum(weights, dim=0) + epsilon)
 
@@ -74,13 +85,11 @@ class KalmanFusionModel(nn.Module):
         return weighted_average
 
     def product_of_experts(self, predictions: list, weights: list):
-        assert len(predictions) == len(weights)
-        weights = torch.stack(weights)
-        predictions = torch.stack(predictions)
+        assert predictions.shape == weights.shape
         T= 1.0/weights
         mu = (predictions * T).sum(0) * (1.0/ T.sum(0))
         var = (1.0/T.sum(0))
-        return mu, var
+        return mu
 
 class CrossModalWeights(nn.Module):
 
