@@ -1,5 +1,6 @@
-from . import fusion
 import torch
+import torch.nn as nn
+import numpy as np
 
 
 class ParticleFusionModel(nn.Module):
@@ -9,6 +10,10 @@ class ParticleFusionModel(nn.Module):
         self.image_model = image_model
         self.force_model = force_model
         self.weight_model = weight_model
+
+        self.freeze_image_model = True
+        self.freeze_force_model = True
+        self.freeze_weight_model = False
 
     def forward(self, states_prev, log_weights_prev,
                 observations, controls, resample=True, noisy_dynamics=True):
@@ -49,6 +54,21 @@ class ParticleFusionModel(nn.Module):
         image_log_beta, force_log_beta = self.weight_model(observations)
         assert image_beta.shape == (N, 1)
         assert force_beta.shape == (N, 1)
+
+        # Model freezing
+        if self.freeze_image_model:
+            image_state_estimates = image_state_estimates.detach()
+            image_state_pred = image_state_pred.detach()
+            image_log_weights_pred = image_log_weights_pred.detach()
+
+        if self.freeze_force_model:
+            force_state_estimates = force_state_estimates.detach()
+            force_state_pred = force_state_pred.detach()
+            force_log_weights_pred = force_log_weights_pred.detach()
+
+        if self.freeze_weight_model:
+            image_log_beta = image_log_beta.detach()
+            force_log_beta = force_log_beta.detach()
 
         # Concatenate particles from each filter
         states_pred = torch.cat([

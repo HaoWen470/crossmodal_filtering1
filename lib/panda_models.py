@@ -66,7 +66,7 @@ class PandaSimpleDynamicsModel(dpf.DynamicsModel):
 class PandaDynamicsModel(dpf.DynamicsModel):
 
     # (x, y, cos theta, sin theta, mass, friction)
-    default_state_noise_stddev = 0.05
+    default_state_noise_stddev = 0.02
 
     def __init__(self, state_dim=2, state_noise_stddev=None,
                  units=32, use_particles=True):
@@ -205,12 +205,21 @@ class PandaSimpleMeasurementModel(dpf.MeasurementModel):
 
 class PandaMeasurementModel(dpf.MeasurementModel):
 
-    def __init__(self, state_dim=2, units=64):
+    def __init__(self, state_dim=2, units=64, missing_modalities=[]):
         super().__init__()
 
         obs_pos_dim = 3
         obs_sensors_dim = 7
         self.state_dim = state_dim
+
+        # Missing modalities
+        self.modalities = set(["image", 'gripper_sensors', 'gripper_pos'])
+        if missing_modalities:
+            if type(missing_modalities) == list:
+                self.modalities -= set(missing_modalities)
+            else:
+                assert missing_modalities in self.modalities
+                self.modalities -= set([missing_modalities])
 
         self.observation_image_layers = nn.Sequential(
             nn.Conv2d(
@@ -249,7 +258,7 @@ class PandaMeasurementModel(dpf.MeasurementModel):
         )
 
         self.shared_layers = nn.Sequential(
-            nn.Linear(units * 4, units),
+            nn.Linear(units * (len(self.modalities) + 1), units),
             nn.ReLU(inplace=True),
             resblocks.Linear(units),
             resblocks.Linear(units),
@@ -270,17 +279,24 @@ class PandaMeasurementModel(dpf.MeasurementModel):
 
         # Construct observations feature vector
         # (N, obs_dim)
-        observation_features = torch.cat((
-            self.observation_image_layers(
-                observations['image'][:, np.newaxis, :, :]),
-            self.observation_pos_layers(observations['gripper_pos']),
-            self.observation_sensors_layers(
-                observations['gripper_sensors']),
-        ), dim=1)
+        obs = []
+        if "image" in self.modalities:
+            obs.append(self.observation_image_layers(
+                observations['image'][:, np.newaxis, :, :]))
+
+        if "gripper_pos" in self.modalities:
+            obs.append(self.observation_pos_layers(
+                observations['gripper_pos']))
+
+        if "gripper_sensors" in self.modalities:
+            obs.append(self.observation_sensors_layers(
+                observations['gripper_sensors']))
+
+        observation_features = torch.cat(obs, dim=1)
 
         # (N, obs_dim) => (N, M, obs_dim)
         observation_features = observation_features[:, np.newaxis, :].expand(
-            N, M, self.units * 3)
+            N, M, self.units * len(self.modalities))
         assert observation_features.shape == (N, M, self.units * 3)
 
         # (N, M, state_dim) => (N, M, units)
@@ -322,15 +338,14 @@ class PandaEKFMeasurementModel(dpf.MeasurementModel):
         self.state_dim = state_dim
         self.use_states = use_states
 
-        # missing modalities
-        self.modalities = ["image", 'gripper_sensors', 'gripper_pos']
+        # Missing modalities
+        self.modalities = set(["image", 'gripper_sensors', 'gripper_pos'])
         if missing_modalities:
             if type(missing_modalities) == list:
-                self.modalities = [
-                    mod for mod in self.modalities if mod not in missing_modalities]
+                self.modalities -= set(missing_modalities)
             else:
                 assert missing_modalities in self.modalities
-                self.modalities.pop(self.modalities.index(missing_modalities))
+                self.modalities -= set([missing_modalities])
 
         if use_spatial_softmax:
             self.observation_image_layers = nn.Sequential(

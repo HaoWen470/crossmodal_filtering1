@@ -141,7 +141,7 @@ class CrossModalWeights(nn.Module):
         if self.use_softmax:
             self.shared_layer = nn.Sequential(
                 nn.Linear(units * 3, units),
-                nn.ReLu(inplace=True),
+                nn.ReLU(inplace=True),
                 resblocks.Linear(units, units),
                 resblocks.Linear(units, units),
                 resblocks.Linear(units, units),
