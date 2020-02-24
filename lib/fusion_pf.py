@@ -48,24 +48,24 @@ class ParticleFusionModel(nn.Module):
             resample=False
         )
 
-        # Weight state estimates from each filter
-        state_estimates = torch.exp(image_beta) * image_state_estimates \
-            + torch.exp(force_beta) * force_state_estimates
-
-        # Weight particles from each filter
+        # Get weights
         image_log_beta, force_log_beta = self.weight_model(observations)
-        assert image_beta.shape == (N, 1)
-        assert force_beta.shape == (N, 1)
+        assert image_log_beta.shape == (N, 1)
+        assert force_log_beta.shape == (N, 1)
+
+        # Weight state estimates from each filter
+        state_estimates = torch.exp(image_log_beta) * image_state_estimates \
+            + torch.exp(force_log_beta) * force_state_estimates
 
         # Model freezing
         if self.freeze_image_model:
             image_state_estimates = image_state_estimates.detach()
-            image_state_pred = image_state_pred.detach()
+            image_states_pred = image_states_pred.detach()
             image_log_weights_pred = image_log_weights_pred.detach()
 
         if self.freeze_force_model:
             force_state_estimates = force_state_estimates.detach()
-            force_state_pred = force_state_pred.detach()
+            force_states_pred = force_states_pred.detach()
             force_log_weights_pred = force_log_weights_pred.detach()
 
         if self.freeze_weight_model:
@@ -77,13 +77,13 @@ class ParticleFusionModel(nn.Module):
             image_states_pred,
             force_states_pred,
         ], dim=1)
-        log_weights = torch.cat([
+        log_weights_pred = torch.cat([
             image_log_weights_pred + image_log_beta,
             force_log_weights_pred + force_log_beta,
         ], dim=1)
 
-        assert log_weights.shape == (2 * N, M)
-        assert states_pred.shape == (2 * N, M, state_dim)
+        assert log_weights_pred.shape == (N, 2 * M)
+        assert states_pred.shape == (N, 2 * M, state_dim)
         if resample:
             # Resample particles
             distribution = torch.distributions.Categorical(
@@ -98,5 +98,12 @@ class ParticleFusionModel(nn.Module):
 
             # Uniform weights
             log_weights = torch.zeros((N, M), device=device) - np.log(M)
+        else:
+            states = states_pred
+            log_weights = log_weights_pred
+
+            # Normalize predicted weights
+            log_weights = log_weights_pred - \
+                torch.logsumexp(log_weights_pred, dim=1)[:, np.newaxis]
 
         return state_estimates, states, log_weights
