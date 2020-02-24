@@ -294,23 +294,24 @@ class PandaMeasurementModel(dpf.MeasurementModel):
 
         observation_features = torch.cat(obs, dim=1)
 
-        # (N, obs_dim) => (N, M, obs_dim)
+        # (N, obs_features) => (N, M, obs_features)
         observation_features = observation_features[:, np.newaxis, :].expand(
             N, M, self.units * len(self.modalities))
-        assert observation_features.shape == (N, M, self.units * 3)
+        assert observation_features.shape == (
+            N, M, self.units * len(self.modalities))
 
         # (N, M, state_dim) => (N, M, units)
         state_features = self.state_layers(states)
         # state_features = self.state_layers(states * torch.tensor([[[1., 0.]]], device=states.device))
         assert state_features.shape == (N, M, self.units)
 
-        # (N, M, units)
         merged_features = torch.cat(
             (observation_features, state_features),
             dim=2)
-        assert merged_features.shape == (N, M, self.units * 4)
+        assert merged_features.shape == (
+            N, M, self.units * (len(self.modalities) + 1))
 
-        # (N, M, units * 4) => (N, M, 1)
+        # (N, M, merged_dim) => (N, M, 1)
         log_likelihoods = self.shared_layers(merged_features)
         assert log_likelihoods.shape == (N, M, 1)
 
