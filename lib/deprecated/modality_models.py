@@ -16,7 +16,6 @@ class MissingModalityMeasurementModel(ekf.KFMeasurementModel):
     def __init__(self, missing_modality, units=16, state_dim=2):
         super().__init__(units, state_dim)
 
-
         self.modalities = ["image", 'gripper_sensors', 'gripper_pos']
         if type(missing_modality) == list:
             self.modalities = [mod for mod in self.modalities if mod not in missing_modality]

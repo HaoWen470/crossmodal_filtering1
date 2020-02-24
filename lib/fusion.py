@@ -19,7 +19,7 @@ class KalmanFusionModel(nn.Module):
 
         assert self.fusion_type in ["weighted", "poe", "sigma"]
 
-    def forward(self, states_prev, state_sigma_prev, observations, controls, ):
+    def forward(self, states_prev, state_sigma_prev, observations, controls, obs_only=False):
 
             assert state_sigma_prev is not None
             image_state, image_state_sigma = self.image_model.forward(
@@ -27,7 +27,8 @@ class KalmanFusionModel(nn.Module):
                 state_sigma_prev,
                 observations,
                 controls,
-                noisy_dynamics=True
+                noisy_dynamics=True,
+                obs_only = obs_only
             )
 
             force_state, force_state_sigma = self.force_model.forward(
@@ -35,12 +36,14 @@ class KalmanFusionModel(nn.Module):
                 state_sigma_prev,
                 observations,
                 controls,
-                noisy_dynamics=True
+                noisy_dynamics=True,
+                obs_only = obs_only
             )
 
             force_beta, image_beta, _ = self.weight_model.forward(observations)
             weights = [image_beta, force_beta]
-            sigma_weights = [torch.diag_embed(image_beta, offset=0, dim1=-2, dim2=-1), torch.diag_embed(force_beta, offset=0, dim1=-2, dim2=-1)]
+            sigma_weights = [torch.diag_embed(image_beta, offset=0, dim1=-2, dim2=-1),
+                             torch.diag_embed(force_beta, offset=0, dim1=-2, dim2=-1)]
             states_pred = [image_state, force_state]
             state_sigma_pred = [image_state_sigma, force_state_sigma]
 
@@ -48,7 +51,7 @@ class KalmanFusionModel(nn.Module):
                 state = self.weighted_average(states_pred, weights)
                 state_sigma = self.weighted_average(state_sigma_pred, sigma_weights)
             elif self.fusion_type == "poe":
-                state = self.product_of_experts(states_pred, weights)
+                state, _ = self.product_of_experts(states_pred, weights)
                 state_sigma = self.weighted_average(state_sigma_pred, sigma_weights)
 
             #todo: sigma weighting and poe -- make sure you divide
@@ -77,7 +80,6 @@ class KalmanFusionModel(nn.Module):
         T= 1.0/weights
         mu = (predictions * T).sum(0) * (1.0/ T.sum(0))
         var = (1.0/T.sum(0))
-
         return mu, var
 
 class CrossModalWeights(nn.Module):

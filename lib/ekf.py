@@ -51,7 +51,8 @@ class KalmanFilterNetwork(nn.Module):
 
     def forward(self, states_prev, states_sigma_prev,
                 observations, controls,
-                noisy_dynamics=True):
+                noisy_dynamics=True,
+                obs_only=False):
         # states_prev: (N, *)
         # states_sigma_prev: (N, *, *)
         # observations: (N, *)
@@ -76,7 +77,15 @@ class KalmanFilterNetwork(nn.Module):
         states_sigma_pred += states_pred_Q
 
         # Measurement update step!
-        z, R = self.measurement_model(observations, states_pred)
+        if obs_only:
+            use_states_current = self.measurement_model.use_states
+            self.measurement_model.use_states = False
+            z, R = self.measurement_model(observations, states_pred)
+            self.measurement_model.use_states = use_states_current
+            return z, R
+
+        else:
+            z, R = self.measurement_model(observations, states_pred)
 
         #Kalman Gain
         K_update = torch.bmm(states_sigma_pred, torch.inverse(states_sigma_pred + R))
