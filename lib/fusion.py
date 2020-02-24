@@ -6,6 +6,7 @@ from fannypack.nn import resblocks
 from fannypack import utils
 import torch.optim as optim
 
+from lib import utility
 
 class KalmanFusionModel(nn.Module):
 
@@ -18,13 +19,6 @@ class KalmanFusionModel(nn.Module):
         self.fusion_type = fusion_type
 
         assert self.fusion_type in ["weighted", "poe", "sigma"]
-
-
-    def diag_to_vector(self, batched_m):
-
-        l = [batched_m[:, i, i] for i in range(batched_m.shape[-1])]
-        l = torch.stack(l).transpose(0,1)
-        return l
 
     def forward(self, states_prev, state_sigma_prev, observations, controls, obs_only=False ):
 
@@ -55,7 +49,7 @@ class KalmanFusionModel(nn.Module):
             states_pred = torch.stack([image_state, force_state])
             state_sigma_pred = torch.stack([image_state_sigma, force_state_sigma])
 
-            sigma_as_weights = self.diag_to_vector(1.0/state_sigma_pred)
+            sigma_as_weights = utility.diag_to_vector(1.0/state_sigma_pred)
 
             if self.fusion_type == "weighted":
                 state = self.weighted_average(states_pred, weights)
