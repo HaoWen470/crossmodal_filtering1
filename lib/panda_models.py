@@ -295,10 +295,9 @@ class PandaMeasurementModel(dpf.MeasurementModel):
 class PandaEKFMeasurementModel(dpf.MeasurementModel):
     """
     Measurement model
-    todo: do we also have overall measurement class? or different for kf and pf?
     """
 
-    def __init__(self, units=64,
+    def __init__(self, units=128,
                  state_dim=2,
                  use_states=False,
                  use_spatial_softmax=False,
@@ -310,6 +309,7 @@ class PandaEKFMeasurementModel(dpf.MeasurementModel):
         image_dim = (32, 32)
 
         self.state_dim = state_dim
+        # if we want to use states in measurement model update
         self.use_states = use_states
 
         # missing modalities
@@ -438,6 +438,6 @@ class PandaEKFMeasurementModel(dpf.MeasurementModel):
         lt = torch.diag_embed(lt_hat, offset=0, dim1=-2, dim2=-1)
         assert lt.shape == (N, self.state_dim, self.state_dim)
 
-        R = lt @ lt.transpose(1, 2)
+        R = lt ** 2
 
         return z, R

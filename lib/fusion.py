@@ -41,7 +41,7 @@ class KalmanFusionModel(nn.Module):
                 obs_only = obs_only
             )
 
-            force_beta, image_beta, _ = self.weight_model.forward(observations)
+            force_beta, image_beta  = self.weight_model.forward(observations)
 
             weights = torch.stack([image_beta, force_beta])
             weights_for_sigma = [torch.diag_embed(image_beta, offset=0, dim1=-2, dim2=-1), torch.diag_embed(force_beta, offset=0, dim1=-2, dim2=-1)]
@@ -49,7 +49,8 @@ class KalmanFusionModel(nn.Module):
             states_pred = torch.stack([image_state, force_state])
             state_sigma_pred = torch.stack([image_state_sigma, force_state_sigma])
 
-            sigma_as_weights = utility.diag_to_vector(1.0/state_sigma_pred)
+            sigma_as_weights = 1.0/(utility.diag_to_vector(state_sigma_pred)+1e-9)
+            print(sigma_as_weights)
 
             if self.fusion_type == "weighted":
                 state = self.weighted_average(states_pred, weights)
@@ -68,8 +69,7 @@ class KalmanFusionModel(nn.Module):
 
         assert predictions.shape == weights.shape
 
-        epsilon = 0.0001
-        weights = weights / (torch.sum(weights, dim=0) + epsilon)
+        weights = weights / (torch.sum(weights, dim=0) + 1e-9)
 
         weighted_average = torch.sum(weights*predictions, dim=0)
 
@@ -80,7 +80,7 @@ class KalmanFusionModel(nn.Module):
 
     def product_of_experts(self, predictions: list, weights: list):
         assert predictions.shape == weights.shape
-        T= 1.0/weights
+        T= 1.0/(weights + 1e-9)
         mu = (predictions * T).sum(0) * (1.0/ T.sum(0))
         var = (1.0/T.sum(0))
         return mu

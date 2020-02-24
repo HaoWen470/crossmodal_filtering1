@@ -26,6 +26,9 @@ class KalmanFilterNetwork(nn.Module):
         assert self.dynamics_model.use_particles == False 
         self.measurement_model = measurement_model
 
+        # in the filter we want to use states for measurement model
+        self.measurement_model.use_states = True
+
         self.freeze_dynamics_model = False
         self.freeze_measurement_model = False
 
@@ -49,8 +52,10 @@ class KalmanFilterNetwork(nn.Module):
 
         return x.grad
 
-    def forward(self, states_prev, states_sigma_prev,
-                observations, controls,
+    def forward(self, states_prev,
+                states_sigma_prev,
+                observations,
+                controls,
                 noisy_dynamics=True,
                 obs_only=False):
         # states_prev: (N, *)
@@ -79,12 +84,13 @@ class KalmanFilterNetwork(nn.Module):
         # Measurement update step!
         if obs_only:
             use_states_current = self.measurement_model.use_states
+            # don't use states if we are going from observations -> states
             self.measurement_model.use_states = False
             z, R = self.measurement_model(observations, states_pred)
             self.measurement_model.use_states = use_states_current
             return z, R
-
         else:
+            # do normal measurement update step
             z, R = self.measurement_model(observations, states_pred)
 
         #Kalman Gain
@@ -94,6 +100,5 @@ class KalmanFilterNetwork(nn.Module):
         states_update = torch.unsqueeze(states_pred,-1) + torch.bmm(K_update, torch.unsqueeze(z-states_pred,-1))
         states_update = states_update.squeeze()
         states_sigma_update = torch.bmm(torch.eye(K_update.shape[-1]).repeat(N, 1, 1).to(K_update.device) - K_update, states_sigma_pred)
-
 
         return states_update, states_sigma_update

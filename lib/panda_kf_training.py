@@ -2,9 +2,25 @@ import torch
 import torch.nn.functional as F
 import numpy as np
 import matplotlib.pyplot as plt
-from tqdm import tqdm_notebook
+from IPython import get_ipython
 from lib import utility
 
+def in_ipynb():
+    try:
+        cfg = get_ipython().config
+        if cfg['IPKernelApp']['parent_appname'] == 'ipython-notebook':
+            return True
+        else:
+            return False
+    except NameError:
+        return False
+
+if in_ipynb():
+    print("notebook")
+    from tqdm import tqdm_notebook as tqdm
+else:
+    print("nope")
+    from tqdm import tqdm
 
 from fannypack import utils
 import fannypack
@@ -13,12 +29,12 @@ from . import dpf
 def train_dynamics_recurrent(
         buddy, kf_model, dataloader, log_interval=10,
         loss_type="l2",
-        optim_name="ekf_dynamics"):
+        optim_name="ekf_dynamics", checkpoint_interval=50):
     epoch_losses = []
 
     assert loss_type in ('l1', 'l2')
 
-    for batch_idx, batch in enumerate(tqdm_notebook(dataloader)):
+    for batch_idx, batch in enumerate(tqdm(dataloader)):
         batch_gpu = utils.to_device(batch, buddy._device)
         batch_states, batch_obs, batch_controls = batch_gpu
 
@@ -72,7 +88,7 @@ def train_dynamics_recurrent(
         buddy.minimize(
             loss,
             optimizer_name= optim_name,
-            checkpoint_interval=50)
+            checkpoint_interval=checkpoint_interval)
 
         if buddy.optimizer_steps % log_interval == 0:
             with buddy.log_scope(optim_name):
@@ -93,17 +109,17 @@ def train_dynamics_recurrent(
 
 
 def train_measurement(buddy, kf_model, dataloader, log_interval=10,
-                      optim_name="ekf_measurement"):
+                      optim_name="ekf_measurement", checkpoint_interval=500):
     losses = []
 
-    for batch_idx, batch in enumerate(tqdm_notebook(dataloader)):
+    for batch_idx, batch in enumerate(tqdm(dataloader)):
         noisy_state, observation, _, state = fannypack.utils.to_device(batch, buddy._device)
         #         states = states[:,0,:]
         state_update, R = kf_model.measurement_model(observation, noisy_state)
         loss = F.mse_loss(state_update, state)
         buddy.minimize(loss,
                        optimizer_name= optim_name,
-                       checkpoint_interval=500)
+                       checkpoint_interval=checkpoint_interval)
         losses.append(utils.to_numpy(loss))
         with buddy.log_scope(optim_name):
             buddy.log("loss", loss)
@@ -114,17 +130,17 @@ def train_measurement(buddy, kf_model, dataloader, log_interval=10,
 
     print("Epoch loss:", np.mean(losses))
 
-def train_fusion(buddy, fusion_model, dataloader, log_interval=2, optim_name="fusion", obs_only=False):
-    for batch_idx, batch in enumerate(tqdm_notebook(dataloader)):
+def train_fusion(buddy, fusion_model, dataloader, log_interval=2,
+                 optim_name="fusion", obs_only=False):
+    for batch_idx, batch in enumerate(tqdm(dataloader)):
         # Transfer to GPU and pull out batch data
         batch_gpu = utils.to_device(batch, buddy._device)
         _, batch_states, batch_obs, batch_controls = batch_gpu
-        # N = batch size, M = particle count
+        # N = batch size
         N, timesteps, control_dim = batch_controls.shape
         N, timesteps, state_dim = batch_states.shape
         assert batch_controls.shape == (N, timesteps, control_dim)
 
-        #todo: change
         state = batch_states[:, 0, :]
         state_sigma = torch.eye(state.shape[-1], device=buddy._device) * 0.5
         state_sigma = state_sigma.unsqueeze(0).repeat(N, 1, 1)
@@ -159,6 +175,7 @@ def train_fusion(buddy, fusion_model, dataloader, log_interval=2, optim_name="fu
                 utils.DictIterator(batch_obs)[:, t, :],
                 batch_controls[:, t, :],
             )
+
             loss_image = torch.mean((image_state - batch_states[:, t, :]) ** 2)
             loss_force = torch.mean((force_state - batch_states[:, t, :]) ** 2)
             loss_fused = torch.mean((state - batch_states[:, t, :]) ** 2)
@@ -167,7 +184,6 @@ def train_fusion(buddy, fusion_model, dataloader, log_interval=2, optim_name="fu
             losses_image.append(loss_image)
             losses_fused.append(loss_fused)
             losses_total.append(loss_image + loss_force +loss_fused)
-
 
         buddy.minimize(
             torch.mean(torch.stack(losses_total)),
@@ -181,9 +197,14 @@ def train_fusion(buddy, fusion_model, dataloader, log_interval=2, optim_name="fu
                 buddy.log("Force loss",  torch.mean(torch.stack(losses_force)))
                 buddy.log("Fused loss",  torch.mean(torch.stack(losses_fused)))
 
-def train_e2e(buddy, ekf_model, dataloader, log_interval=2, optim_name="ekf", obs_only=False):
+
+def train_e2e(buddy, ekf_model, dataloader,
+              log_interval=2, optim_name="ekf",
+              obs_only=False,
+              checkpoint_interval = 50
+              ):
     # Train for 1 epoch
-    for batch_idx, batch in enumerate(tqdm_notebook(dataloader)):
+    for batch_idx, batch in enumerate(tqdm(dataloader)):
         # Transfer to GPU and pull out batch data
         batch_gpu = utils.to_device(batch, buddy._device)
         _, batch_states, batch_obs, batch_controls = batch_gpu
@@ -235,7 +256,7 @@ def train_e2e(buddy, ekf_model, dataloader, log_interval=2, optim_name="ekf", ob
         buddy.minimize(
             torch.mean(torch.stack(losses)),
             optimizer_name= optim_name,
-            checkpoint_interval=50)
+            checkpoint_interval=checkpoint_interval)
 
         if buddy.optimizer_steps % log_interval == 0:
             with buddy.log_scope(optim_name):
