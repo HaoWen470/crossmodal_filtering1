@@ -6,6 +6,7 @@ from fannypack import utils
 import h5py
 import tqdm
 import multiprocessing as mp
+import skimage.transform
 
 # Handle arguments/inputs
 parser = argparse.ArgumentParser()
@@ -46,6 +47,12 @@ for path in paths:
         for i, traj in enumerate(input_file):
             if traj['object'][0].decode('utf-8') != args.object:
                 continue
+
+            N = len(traj['image'])
+            traj['image'] = skimage.transform.resize(
+                traj['image'], (N, 32, 32, 3))
+            traj['coord'] = skimage.transform.resize(
+                traj['coord'], (N, 32, 32, 3))
 
             print(f"Adding trajectory {i} from {path}")
             print(f"Total output length: {len(output_file)}")
