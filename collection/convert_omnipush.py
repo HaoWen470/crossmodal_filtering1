@@ -22,6 +22,8 @@ parser.add_argument(
     help="Path to write trajectories to.",
     required=True)
 
+parser.add_argument('--no_image', action='store_true')
+
 args = parser.parse_args()
 input_pattern = f"{args.source_dir}/*"
 output_dir = args.output_dir
@@ -51,6 +53,9 @@ timestep_keys = [
     'tip',
 ]
 
+if args.no_image:
+    timestep_keys.remove('image')
+
 
 # Get list of files to process
 paths = glob(input_pattern)
@@ -73,13 +78,15 @@ def process_file(path_index):
         # Iterate over each trajectory
         for traj_index in tqdm.trange(traj_count, desc=f"Trajectories [{path_index}]"):
             traj_file.add_meta({
-                key: h5file[key][traj_index] for key in meta_keys
+                key: h5file[key][traj_index]
+                for key in meta_keys
             })
 
             # Iterate over each timestep
             for timestep in range(timestep_count):
                 traj_file.add_timestep({
-                    key: h5file[key][traj_index, timestep] for key in timestep_keys
+                    key: h5file[key][traj_index, timestep]
+                    for key in timestep_keys
                 })
 
             # Write current trajectory
