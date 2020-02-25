@@ -107,7 +107,7 @@ def load_trajectories(*paths, use_vision=True, vision_interval=10,
                     for i in range(len(observations['image'])):
                         index = (i // vision_interval) * vision_interval
                         index = min(index, len(observations['image']))
-                        blackout_chance = np.random.random.uniform()
+                        blackout_chance = np.random.uniform()
                         # if blackout chance > ratio, then fill image
                         # otherwise zero
                         if blackout_chance > image_blackout_ratio:
