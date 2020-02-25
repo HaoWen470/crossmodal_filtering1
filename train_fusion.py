@@ -29,6 +29,7 @@ if __name__ == '__main__':
     parser.add_argument("--module_type", type=str, default="all", choices=["all", "ekf"])
     parser.add_argument("--blackout", type=float, default=0.0)
     parser.add_argument("--mass", action="store_true")
+    parser.add_argument("--omnipush", action="store_true")
     args = parser.parse_args()
 
     experiment_name = args.experiment_name
@@ -76,31 +77,71 @@ if __name__ == '__main__':
     #     subsequence_length=16,
     #     **dataset_args)
 
-    e2e_trainset = panda_datasets.PandaParticleFilterDataset(
-        "data/gentle_push_{}.hdf5".format(args.data_size),
-        subsequence_length=16,
-        particle_count=1,
-        particle_stddev=(.03, .03),
-        **dataset_args
-    )
+    if args.omnipush:
 
-    dataset_measurement = panda_datasets.PandaMeasurementDataset(
-        "data/gentle_push_{}.hdf5".format(args.data_size),
-        subsequence_length=16,
-        stddev=(0.5, 0.5),
-        samples_per_pair=20,
-        **dataset_args)
 
-    dynamics_recurrent_trainset = panda_datasets.PandaSubsequenceDataset(
-        "data/gentle_push_{}.hdf5".format(args.data_size),
-        subsequence_length=32,
-        **dataset_args
-    )
+        e2e_trainset = panda_datasets.PandaParticleFilterDataset(
+            "omnipush_data/ellip1_trainset.hdf5",
+            "omnipush_data/ellip2_trainset.hdf5",
+            "omnipush_data/ellip3_trainset.hdf5",
 
-    dataset_dynamics = panda_datasets.PandaDynamicsDataset(
-        'data/gentle_push_{}.hdf5'.format(args.data_size),
-        subsequence_length=16,
-        **dataset_args)
+            subsequence_length=16,
+            particle_count=1,
+            particle_stddev=(.03, .03),
+            **dataset_args
+        )
+
+        dataset_measurement = panda_datasets.PandaMeasurementDataset(
+            "omnipush_data/ellip1_trainset.hdf5",
+            "omnipush_data/ellip2_trainset.hdf5",
+            "omnipush_data/ellip3_trainset.hdf5",
+
+            subsequence_length=16,
+            stddev=(0.5, 0.5),
+            samples_per_pair=20,
+            **dataset_args)
+
+        dynamics_recurrent_trainset = panda_datasets.PandaSubsequenceDataset(
+            "omnipush_data/ellip1_trainset.hdf5",
+            "omnipush_data/ellip2_trainset.hdf5",
+            "omnipush_data/ellip3_trainset.hdf5",
+
+            subsequence_length=32,
+            **dataset_args
+        )
+
+        dataset_dynamics = panda_datasets.PandaDynamicsDataset(
+            "omnipush_data/ellip1_trainset.hdf5",
+            "omnipush_data/ellip2_trainset.hdf5",
+            "omnipush_data/ellip3_trainset.hdf5",
+            subsequence_length=16,
+            **dataset_args)
+    else:
+            e2e_trainset = panda_datasets.PandaParticleFilterDataset(
+            "data/gentle_push_{}.hdf5".format(args.data_size),
+            subsequence_length=16,
+            particle_count=1,
+            particle_stddev=(.03, .03),
+            **dataset_args
+        )
+
+        dataset_measurement = panda_datasets.PandaMeasurementDataset(
+            "data/gentle_push_{}.hdf5".format(args.data_size),
+            subsequence_length=16,
+            stddev=(0.5, 0.5),
+            samples_per_pair=20,
+            **dataset_args)
+
+        dynamics_recurrent_trainset = panda_datasets.PandaSubsequenceDataset(
+            "data/gentle_push_{}.hdf5".format(args.data_size),
+            subsequence_length=32,
+            **dataset_args
+        )
+
+        dataset_dynamics = panda_datasets.PandaDynamicsDataset(
+            'data/gentle_push_{}.hdf5'.format(args.data_size),
+            subsequence_length=16,
+            **dataset_args)
 
     #train everything
     if args.train == "all":
