@@ -35,19 +35,23 @@ from . import dpf
 # 'object_z_angle'])
 
 
-def load_trajectories(*paths, use_vision=True,
-                      vision_interval=10, use_proprioception=True, use_haptics=True, **unused):
+def load_trajectories(*paths, use_vision=True, vision_interval=10,
+                      use_proprioception=True, use_haptics=True,
+                      use_mass= False, use_depth= False,
+                      image_blackout_ratio=0, **unused):
     """
-    Loads a list of trajectories from a set of input paths, where each trajectory is a tuple
-    containing...
+    Loads a list of trajectories from a set of input paths, where each
+    trajectory is a tuple containing...
         states: an (T, state_dim) array of state vectors
         observations: a key->(T, *) dict of observations
         controls: an (T, control_dim) array of control vectors
 
-    Each path can either be a string or a (string, int) tuple, where int indicates the maximum
-    number of timesteps to import.
+    Each path can either be a string or a (string, int) tuple, where int
+    indicates the maximum number of trajectories to import.
     """
     trajectories = []
+
+    assert 1 > image_blackout_ratio >= 0
 
     for path in paths:
         count = np.float('inf')
@@ -70,14 +74,12 @@ def load_trajectories(*paths, use_vision=True,
                 states = np.full((timesteps, state_dim), np.nan)
 
                 states[:, :2] = trajectory['Cylinder0_pos'][:, :2]  # x, y
+                if use_mass:
+                    states[:, 3] = trajectory['Cylinder0_mass'][:, 0]
+
                 # states[:, 2] = np.cos(trajectory['object_z_angle'])
                 # states[:, 3] = np.sin(trajectory['object_z_angle'])
-                # states[:, 4] = trajectory['Cylinder0_mass'][:, 0]
                 # states[:, 5] = trajectory['Cylinder0_friction'][:, 0]
-
-                # Zero out everything but XY position
-                # TODO: remove this
-                states[:, 2:] *= 0
 
                 # Pull out observations
                 ## This is currently consisted of:
@@ -105,7 +107,17 @@ def load_trajectories(*paths, use_vision=True,
                     for i in range(len(observations['image'])):
                         index = (i // vision_interval) * vision_interval
                         index = min(index, len(observations['image']))
-                        observations['image'][i] = trajectory['image'][index]
+                        blackout_chance = np.random.random.uniform()
+                        # if blackout chance > ratio, then fill image
+                        # otherwise zero
+                        if blackout_chance > image_blackout_ratio:
+                            observations['image'][i] = trajectory['image'][index]
+                observations['depth'] = np.zeros_like(trajectory['depth'])
+                if use_depth:
+                    for i in range(len(observations['depth'])):
+                        index = (i // vision_interval) * vision_interval
+                        index = min(index, len(observations['depth']))
+                        observations['depth'][i] = trajectory['depth'][index]
 
                 # Pull out controls
                 ## This is currently consisted of:
@@ -300,7 +312,8 @@ class PandaMeasurementDataset(torch.utils.data.Dataset):
         log_likelihood = np.asarray(scipy.stats.multivariate_normal.logpdf(
             noisy_state[:2], mean=state[:2], cov=np.diag(self.stddev[:2] ** 2)))
 
-        return utils.to_torch((noisy_state, observation, log_likelihood, state))
+        return utils.to_torch(
+            (noisy_state, observation, log_likelihood, state))
 
     def __len__(self):
         """

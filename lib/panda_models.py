@@ -325,10 +325,9 @@ class PandaMeasurementModel(dpf.MeasurementModel):
 class PandaEKFMeasurementModel(dpf.MeasurementModel):
     """
     Measurement model
-    todo: do we also have overall measurement class? or different for kf and pf?
     """
 
-    def __init__(self, units=64,
+    def __init__(self, units=128,
                  state_dim=2,
                  use_states=False,
                  use_spatial_softmax=False,
@@ -340,6 +339,7 @@ class PandaEKFMeasurementModel(dpf.MeasurementModel):
         image_dim = (32, 32)
 
         self.state_dim = state_dim
+        # if we want to use states in measurement model update
         self.use_states = use_states
 
         # Missing modalities
@@ -425,13 +425,13 @@ class PandaEKFMeasurementModel(dpf.MeasurementModel):
         self.r_layer = nn.Sequential(
             nn.Linear(units, self.state_dim),
             nn.ReLU(inplace=True),
-            resblocks.Linear(self.state_dim),
+            resblocks.Linear(self.state_dim, activation="relu_false"),
         )
 
         self.z_layer = nn.Sequential(
             nn.Linear(units, self.state_dim),
             nn.ReLU(inplace=True),
-            resblocks.Linear(self.state_dim),
+            resblocks.Linear(self.state_dim, activation="relu_false"),
         )
 
         self.units = units
@@ -492,13 +492,14 @@ class PandaEKFMeasurementModel(dpf.MeasurementModel):
         shared_features = self.shared_layers(merged_features)
         assert shared_features.shape == (N, self.units * 2)
 
-        z = self.z_layer(shared_features[:, :self.units])
+        shared_features_z = shared_features[:, :self.units].clone()
+        z = self.z_layer(shared_features_z)
         assert z.shape == (N, self.state_dim)
 
-        lt_hat = self.r_layer(shared_features[:, self.units:])
+        lt_hat = self.r_layer(shared_features[:, self.units:].clone())
         lt = torch.diag_embed(lt_hat, offset=0, dim1=-2, dim2=-1)
         assert lt.shape == (N, self.state_dim, self.state_dim)
 
-        R = lt @ lt.transpose(1, 2)
+        R = lt ** 2
 
         return z, R
