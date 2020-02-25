@@ -36,7 +36,8 @@ from . import dpf
 
 
 def load_trajectories(*paths, use_vision=True, vision_interval=10,
-                      use_proprioception=True, use_haptics=True, **unused):
+                      use_proprioception=True, use_haptics=True,
+                      image_blackout_ratio=0, **unused):
     """
     Loads a list of trajectories from a set of input paths, where each
     trajectory is a tuple containing...
@@ -48,6 +49,8 @@ def load_trajectories(*paths, use_vision=True, vision_interval=10,
     indicates the maximum number of trajectories to import.
     """
     trajectories = []
+
+    assert 1 > image_blackout_ratio >= 0
 
     for path in paths:
         count = np.float('inf')
@@ -105,7 +108,11 @@ def load_trajectories(*paths, use_vision=True, vision_interval=10,
                     for i in range(len(observations['image'])):
                         index = (i // vision_interval) * vision_interval
                         index = min(index, len(observations['image']))
-                        observations['image'][i] = trajectory['image'][index]
+                        blackout_chance = np.random.random.uniform()
+                        # if blackout chance > ratio, then fill image
+                        # otherwise zero
+                        if blackout_chance > image_blackout_ratio:
+                            observations['image'][i] = trajectory['image'][index]
 
                 # Pull out controls
                 ## This is currently consisted of:
