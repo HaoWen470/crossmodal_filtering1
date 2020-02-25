@@ -17,23 +17,22 @@ class PandaParticleFilterNetwork(dpf.ParticleFilterNetwork):
 
 class PandaSimpleDynamicsModel(dpf.DynamicsModel):
 
-    # (x, y, cos theta, sin theta, mass, friction)
-    default_state_noise_stddev = (
-        0.05,  # x
-        0.05,  # y
-        # 1e-10,  # cos theta
-        # 1e-10,  # sin theta
-        # 1e-10,  # mass
-        # 1e-10,  # friction
-    )
+    default_state_noise_stddev = 0.05
 
-    def __init__(self, state_noise_stddev=None):
+    def __init__(self, state_dim=2, state_noise_stddev=None):
         super().__init__()
+
+        self.state_dim = state_dim
 
         if state_noise_stddev is not None:
             self.state_noise_stddev = state_noise_stddev
         else:
             self.state_noise_stddev = self.default_state_noise_stddev
+
+        # Convert scalar noise values to arrays
+        if type(self.state_noise_stddev) == float:
+            self.state_noise_stddev = np.array(
+                [self.state_noise_stddev] * state_dim)
 
     def forward(self, states_prev, controls, noisy=False):
         # states_prev:  (N, M, state_dim)
@@ -51,7 +50,9 @@ class PandaSimpleDynamicsModel(dpf.DynamicsModel):
         # Add noise if desired
         if noisy:
             dist = torch.distributions.Normal(
-                torch.tensor([0.]), torch.tensor(self.state_noise_stddev))
+                torch.zeros(self.state_dim, dtype=torch.float32),
+                torch.FloatTensor(self.state_noise_stddev))
+
             noise = dist.sample((N, M)).to(states_new.device)
             assert noise.shape == (N, M, state_dim)
             states_new = states_new + noise
@@ -67,28 +68,26 @@ class PandaSimpleDynamicsModel(dpf.DynamicsModel):
 class PandaDynamicsModel(dpf.DynamicsModel):
 
     # (x, y, cos theta, sin theta, mass, friction)
-    default_state_noise_stddev = (
-        0.05,  # x
-        0.05,  # y
-        # 1e-10,  # cos theta
-        # 1e-10,  # sin theta
-        # 1e-10,  # mass
-        # 1e-10,  # friction
-    )
+    default_state_noise_stddev = 0.02
 
-
-    def __init__(self, state_noise_stddev=None, units=32, use_particles=True):
+    def __init__(self, state_dim=2, state_noise_stddev=None,
+                 units=32, use_particles=True):
 
         super().__init__()
 
-        state_dim = 2
         control_dim = 7
+        self.state_dim = state_dim
         self.use_particles = use_particles
 
         if state_noise_stddev is not None:
             self.state_noise_stddev = state_noise_stddev
         else:
             self.state_noise_stddev = self.default_state_noise_stddev
+
+        # Convert scalar noise values to arrays
+        if type(self.state_noise_stddev) == float:
+            self.state_noise_stddev = np.array(
+                [self.state_noise_stddev] * state_dim)
 
         self.state_layers = nn.Sequential(
             nn.Linear(state_dim, units),
@@ -146,13 +145,13 @@ class PandaDynamicsModel(dpf.DynamicsModel):
 
         # (N, M, state_dim) => (N, M, units // 2)
         state_features = self.state_layers(states_prev)
-        assert state_features.shape == dimensions+ (self.units, )
+        assert state_features.shape == dimensions + (self.units, )
 
         # (N, M, units)
         merged_features = torch.cat(
             (control_features, state_features),
             dim=-1)
-        assert merged_features.shape == dimensions +  (self.units * 2, )
+        assert merged_features.shape == dimensions + (self.units * 2, )
 
         # (N, M, units * 2) => (N, M, state_dim + 1)
         output_features = self.shared_layers(merged_features)
@@ -176,7 +175,8 @@ class PandaDynamicsModel(dpf.DynamicsModel):
             # TODO: implement version w/ learnable noise
             # (via reparemeterization; should be simple)
             dist = torch.distributions.Normal(
-                torch.tensor([0.]), torch.tensor(self.state_noise_stddev))
+                torch.zeros(self.state_dim, dtype=torch.float32),
+                torch.FloatTensor(self.state_noise_stddev))
             noise = dist.sample(dimensions).to(states_new.device)
             assert noise.shape == dimensions + (state_dim,)
             states_new = states_new + noise
@@ -208,20 +208,41 @@ class PandaSimpleMeasurementModel(dpf.MeasurementModel):
 
 class PandaMeasurementModel(dpf.MeasurementModel):
 
-    def __init__(self, units=64):
+    def __init__(self, state_dim=2, units=64, missing_modalities=[]):
         super().__init__()
 
         obs_pos_dim = 3
         obs_sensors_dim = 7
-        state_dim = 2
+        self.state_dim = state_dim
+
+        # Missing modalities
+        self.modalities = set(["image", 'gripper_sensors', 'gripper_pos'])
+        if missing_modalities:
+            if type(missing_modalities) == list:
+                self.modalities -= set(missing_modalities)
+            else:
+                assert missing_modalities in self.modalities
+                self.modalities -= set([missing_modalities])
 
         self.observation_image_layers = nn.Sequential(
-            nn.Conv2d(in_channels=1, out_channels=32, kernel_size=5, padding=2),
+            nn.Conv2d(
+                in_channels=1,
+                out_channels=32,
+                kernel_size=5,
+                padding=2),
             nn.ReLU(inplace=True),
             resblocks.Conv2d(channels=32, kernel_size=3),
-            nn.Conv2d(in_channels=32, out_channels=16, kernel_size=3, padding=1),
+            nn.Conv2d(
+                in_channels=32,
+                out_channels=16,
+                kernel_size=3,
+                padding=1),
             nn.ReLU(inplace=True),
-            nn.Conv2d(in_channels=16, out_channels=8, kernel_size=3, padding=1),
+            nn.Conv2d(
+                in_channels=16,
+                out_channels=8,
+                kernel_size=3,
+                padding=1),
             nn.Flatten(),  # 32 * 32 * 8
             nn.Linear(8 * 32 * 32, units),
             nn.ReLU(inplace=True),
@@ -240,7 +261,7 @@ class PandaMeasurementModel(dpf.MeasurementModel):
         )
 
         self.shared_layers = nn.Sequential(
-            nn.Linear(units * 4, units),
+            nn.Linear(units * (len(self.modalities) + 1), units),
             nn.ReLU(inplace=True),
             resblocks.Linear(units),
             resblocks.Linear(units),
@@ -253,6 +274,7 @@ class PandaMeasurementModel(dpf.MeasurementModel):
     def forward(self, observations, states):
         assert type(observations) == dict
         assert len(states.shape) == 3  # (N, M, state_dim)
+        assert states.shape[2] == self.state_dim
 
         # N := distinct trajectory count
         # M := particle count
@@ -260,31 +282,39 @@ class PandaMeasurementModel(dpf.MeasurementModel):
 
         # Construct observations feature vector
         # (N, obs_dim)
-        observation_features = torch.cat((
-            self.observation_image_layers(
-                observations['image'][:, np.newaxis, :, :]),
-            self.observation_pos_layers(observations['gripper_pos']),
-            self.observation_sensors_layers(
-                observations['gripper_sensors']),
-        ), dim=1)
+        obs = []
+        if "image" in self.modalities:
+            obs.append(self.observation_image_layers(
+                observations['image'][:, np.newaxis, :, :]))
 
-        # (N, obs_dim) => (N, M, obs_dim)
+        if "gripper_pos" in self.modalities:
+            obs.append(self.observation_pos_layers(
+                observations['gripper_pos']))
+
+        if "gripper_sensors" in self.modalities:
+            obs.append(self.observation_sensors_layers(
+                observations['gripper_sensors']))
+
+        observation_features = torch.cat(obs, dim=1)
+
+        # (N, obs_features) => (N, M, obs_features)
         observation_features = observation_features[:, np.newaxis, :].expand(
-            N, M, self.units * 3)
-        assert observation_features.shape == (N, M, self.units * 3)
+            N, M, self.units * len(self.modalities))
+        assert observation_features.shape == (
+            N, M, self.units * len(self.modalities))
 
         # (N, M, state_dim) => (N, M, units)
         state_features = self.state_layers(states)
         # state_features = self.state_layers(states * torch.tensor([[[1., 0.]]], device=states.device))
         assert state_features.shape == (N, M, self.units)
 
-        # (N, M, units)
         merged_features = torch.cat(
             (observation_features, state_features),
             dim=2)
-        assert merged_features.shape == (N, M, self.units * 4)
+        assert merged_features.shape == (
+            N, M, self.units * (len(self.modalities) + 1))
 
-        # (N, M, units * 4) => (N, M, 1)
+        # (N, M, merged_dim) => (N, M, 1)
         log_likelihoods = self.shared_layers(merged_features)
         assert log_likelihoods.shape == (N, M, 1)
 
@@ -302,7 +332,7 @@ class PandaEKFMeasurementModel(dpf.MeasurementModel):
                  state_dim=2,
                  use_states=False,
                  use_spatial_softmax=False,
-                 missing_modalities = None ):
+                 missing_modalities=None):
         super().__init__()
 
         obs_pose_dim = 3
@@ -312,23 +342,35 @@ class PandaEKFMeasurementModel(dpf.MeasurementModel):
         self.state_dim = state_dim
         self.use_states = use_states
 
-        # missing modalities
-        self.modalities = ["image", 'gripper_sensors', 'gripper_pos']
+        # Missing modalities
+        self.modalities = set(["image", 'gripper_sensors', 'gripper_pos'])
         if missing_modalities:
             if type(missing_modalities) == list:
-                self.modalities = [mod for mod in self.modalities if mod not in missing_modalities]
+                self.modalities -= set(missing_modalities)
             else:
                 assert missing_modalities in self.modalities
-                self.modalities.pop(self.modalities.index(missing_modalities))
+                self.modalities -= set([missing_modalities])
 
         if use_spatial_softmax:
             self.observation_image_layers = nn.Sequential(
-                nn.Conv2d(in_channels=1, out_channels=32, kernel_size=5, padding=2),
+                nn.Conv2d(
+                    in_channels=1,
+                    out_channels=32,
+                    kernel_size=5,
+                    padding=2),
                 nn.ReLU(inplace=True),
                 resblocks.Conv2d(channels=32, kernel_size=3),
-                nn.Conv2d(in_channels=32, out_channels=16, kernel_size=3, padding=1),
+                nn.Conv2d(
+                    in_channels=32,
+                    out_channels=16,
+                    kernel_size=3,
+                    padding=1),
                 nn.ReLU(inplace=True),
-                nn.Conv2d(in_channels=16, out_channels=16, kernel_size=3, padding=1),
+                nn.Conv2d(
+                    in_channels=16,
+                    out_channels=16,
+                    kernel_size=3,
+                    padding=1),
                 spatial_softmax.SpatialSoftmax(32, 32, 16),
                 nn.Linear(16 * 2, units),
                 nn.ReLU(inplace=True),
@@ -336,12 +378,24 @@ class PandaEKFMeasurementModel(dpf.MeasurementModel):
             )
         else:
             self.observation_image_layers = nn.Sequential(
-                nn.Conv2d(in_channels=1, out_channels=32, kernel_size=5, padding=2),
+                nn.Conv2d(
+                    in_channels=1,
+                    out_channels=32,
+                    kernel_size=5,
+                    padding=2),
                 nn.ReLU(inplace=True),
                 resblocks.Conv2d(channels=32, kernel_size=3),
-                nn.Conv2d(in_channels=32, out_channels=16, kernel_size=3, padding=1),
+                nn.Conv2d(
+                    in_channels=32,
+                    out_channels=16,
+                    kernel_size=3,
+                    padding=1),
                 nn.ReLU(inplace=True),
-                nn.Conv2d(in_channels=16, out_channels=2, kernel_size=3, padding=1),
+                nn.Conv2d(
+                    in_channels=16,
+                    out_channels=2,
+                    kernel_size=3,
+                    padding=1),
                 nn.Flatten(),  # 32 * 32 * 8
                 nn.Linear(2 * 32 * 32, units),
                 nn.ReLU(inplace=True),
@@ -405,29 +459,36 @@ class PandaEKFMeasurementModel(dpf.MeasurementModel):
             obs.append(self.observation_image_layers(
                 observations['image'][:, np.newaxis, :, :]))
         if "gripper_pos" in self.modalities:
-            obs.append(self.observation_pose_layers(observations['gripper_pos']))
+            obs.append(
+                self.observation_pose_layers(
+                    observations['gripper_pos']))
         if "gripper_sensors" in self.modalities:
             obs.append(self.observation_sensors_layers(
                 observations['gripper_sensors']))
 
         observation_features = torch.cat(obs, dim=1)
         # missing modalities
-        assert observation_features.shape == (N, self.units * len(self.modalities))
+        assert observation_features.shape == (
+            N, self.units * len(self.modalities))
 
         if self.use_states:
             # (N, units)
                     # (N, state_dim) => (N, units)
             state_features = self.state_layers(states)
         else:
-            state_features = self.state_layers(torch.zeros(states.shape).to(states.device))    
+            state_features = self.state_layers(
+                torch.zeros(
+                    states.shape).to(
+                    states.device))
         assert state_features.shape == (N, self.units)
-        
+
         merged_features = torch.cat(
             (observation_features, state_features),
             dim=1)
         # missing modalities
-        assert merged_features.shape == (N, self.units * (len(self.modalities)+1))
-        
+        assert merged_features.shape == (
+            N, self.units * (len(self.modalities) + 1))
+
         shared_features = self.shared_layers(merged_features)
         assert shared_features.shape == (N, self.units * 2)
 
