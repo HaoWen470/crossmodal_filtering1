@@ -311,7 +311,7 @@ def rollout_kf(kf_model, trajectories, start_time=0, max_timesteps=300,
     predicted_states = [[initial_states[i]]
                         for i in range(len(trajectories))]
 
-    for t in tqdm_notebook(range(start_time + 1, end_time)):
+    for t in tqdm(range(start_time + 1, end_time)):
         s = []
         o = {}
         c = []
