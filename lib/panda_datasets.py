@@ -37,6 +37,7 @@ from . import dpf
 
 def load_trajectories(*paths, use_vision=True, vision_interval=10,
                       use_proprioception=True, use_haptics=True,
+                      use_mass= False, use_depth= False,
                       image_blackout_ratio=0, **unused):
     """
     Loads a list of trajectories from a set of input paths, where each
@@ -73,9 +74,11 @@ def load_trajectories(*paths, use_vision=True, vision_interval=10,
                 states = np.full((timesteps, state_dim), np.nan)
 
                 states[:, :2] = trajectory['Cylinder0_pos'][:, :2]  # x, y
+                if use_mass:
+                    states[:, 3] = trajectory['Cylinder0_mass'][:, 0]
+
                 # states[:, 2] = np.cos(trajectory['object_z_angle'])
                 # states[:, 3] = np.sin(trajectory['object_z_angle'])
-                # states[:, 4] = trajectory['Cylinder0_mass'][:, 0]
                 # states[:, 5] = trajectory['Cylinder0_friction'][:, 0]
 
                 # Pull out observations
@@ -109,6 +112,12 @@ def load_trajectories(*paths, use_vision=True, vision_interval=10,
                         # otherwise zero
                         if blackout_chance > image_blackout_ratio:
                             observations['image'][i] = trajectory['image'][index]
+                observations['depth'] = np.zeros_like(trajectory['depth'])
+                if use_depth:
+                    for i in range(len(observations['depth'])):
+                        index = (i // vision_interval) * vision_interval
+                        index = min(index, len(observations['depth']))
+                        observations['depth'][i] = trajectory['depth'][index]
 
                 # Pull out controls
                 ## This is currently consisted of:

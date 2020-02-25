@@ -26,6 +26,8 @@ if __name__ == '__main__':
     parser.add_argument("--epochs", type=int, default=10,)
     parser.add_argument("--train", type=str, choices=[ "all", "ekf"], default="all")
     parser.add_argument("--obs_only", action="store_true")
+    parser.add_argument("--blackout", type=float, default=0.0)
+    parser.add_argument("--mass", action="store_true")
     args = parser.parse_args()
 
     experiment_name = args.experiment_name
@@ -34,6 +36,8 @@ if __name__ == '__main__':
         'use_haptics': True,
         'use_vision': True,
         'vision_interval': 2,
+        'image_blackout_ratio': args.blackout,
+        'use_mass': args.mass,
     }
     measurement = PandaEKFMeasurementModel()
     dynamics = PandaDynamicsModel(use_particles=False)

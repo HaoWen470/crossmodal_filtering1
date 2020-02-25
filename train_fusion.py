@@ -27,8 +27,8 @@ if __name__ == '__main__':
     parser.add_argument("--train", type=str, choices=[ "all", "fusion", "ekf"], default="all")
     parser.add_argument("--load_checkpoint", type=str, default=None)
     parser.add_argument("--module_type", type=str, default="all", choices=["all", "ekf"])
-
-    args = parser.parse_args()
+    parser.add_argument("--blackout", type=float, default=0.0)
+    parser.add_argument("--mass", action="store_true")
     args = parser.parse_args()
 
     experiment_name = args.experiment_name
@@ -37,6 +37,8 @@ if __name__ == '__main__':
         'use_haptics': True,
         'use_vision': True,
         'vision_interval': 2,
+        'image_blackout_ratio': args.blackout,
+        'use_mass': args.mass,
     }
     # image_modality_model
     image_measurement = PandaEKFMeasurementModel(missing_modalities=['gripper_sensors'])
