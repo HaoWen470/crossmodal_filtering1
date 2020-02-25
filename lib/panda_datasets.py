@@ -78,10 +78,6 @@ def load_trajectories(*paths, use_vision=True, vision_interval=10,
                 # states[:, 4] = trajectory['Cylinder0_mass'][:, 0]
                 # states[:, 5] = trajectory['Cylinder0_friction'][:, 0]
 
-                # Zero out everything but XY position
-                # TODO: remove this
-                states[:, 2:] *= 0
-
                 # Pull out observations
                 ## This is currently consisted of:
                 ## > gripper_pos: end effector position
