@@ -35,17 +35,17 @@ from . import dpf
 # 'object_z_angle'])
 
 
-def load_trajectories(*paths, use_vision=True,
-                      vision_interval=10, use_proprioception=True, use_haptics=True, **unused):
+def load_trajectories(*paths, use_vision=True, vision_interval=10,
+                      use_proprioception=True, use_haptics=True, **unused):
     """
-    Loads a list of trajectories from a set of input paths, where each trajectory is a tuple
-    containing...
+    Loads a list of trajectories from a set of input paths, where each
+    trajectory is a tuple containing...
         states: an (T, state_dim) array of state vectors
         observations: a key->(T, *) dict of observations
         controls: an (T, control_dim) array of control vectors
 
-    Each path can either be a string or a (string, int) tuple, where int indicates the maximum
-    number of timesteps to import.
+    Each path can either be a string or a (string, int) tuple, where int
+    indicates the maximum number of trajectories to import.
     """
     trajectories = []
 
@@ -300,7 +300,8 @@ class PandaMeasurementDataset(torch.utils.data.Dataset):
         log_likelihood = np.asarray(scipy.stats.multivariate_normal.logpdf(
             noisy_state[:2], mean=state[:2], cov=np.diag(self.stddev[:2] ** 2)))
 
-        return utils.to_torch((noisy_state, observation, log_likelihood, state))
+        return utils.to_torch(
+            (noisy_state, observation, log_likelihood, state))
 
     def __len__(self):
         """
