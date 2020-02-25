@@ -78,8 +78,6 @@ if __name__ == '__main__':
     #     **dataset_args)
 
     if args.omnipush:
-
-
         e2e_trainset = panda_datasets.PandaParticleFilterDataset(
             "omnipush_data/ellip1_trainset.hdf5",
             "omnipush_data/ellip2_trainset.hdf5",
@@ -117,7 +115,7 @@ if __name__ == '__main__':
             subsequence_length=16,
             **dataset_args)
     else:
-            e2e_trainset = panda_datasets.PandaParticleFilterDataset(
+        e2e_trainset = panda_datasets.PandaParticleFilterDataset(
             "data/gentle_push_{}.hdf5".format(args.data_size),
             subsequence_length=16,
             particle_count=1,
