@@ -24,8 +24,11 @@ if __name__ == '__main__':
     parser.add_argument("--pretrain", type=int, default=5)
     parser.add_argument("--epochs", type=int, default=10)
     parser.add_argument("--fusion_type", type=str, choices=["weighted", "poe", "sigma"], default="weighted")
-    parser.add_argument("--train", type=str, choices=[ "all", "fusion"], default="all")
+    parser.add_argument("--train", type=str, choices=[ "all", "fusion", "ekf"], default="all")
+    parser.add_argument("--load_checkpoint", type=str, default=None)
+    parser.add_argument("--module_type", type=str, default="all", choices=["all", "ekf"])
 
+    args = parser.parse_args()
     args = parser.parse_args()
 
     experiment_name = args.experiment_name
@@ -45,20 +48,26 @@ if __name__ == '__main__':
     force_dynamics = PandaDynamicsModel(use_particles=False)
     force_model = KalmanFilterNetwork(force_dynamics, force_measurement)
 
+    #weight model and fusion model
     weight_model = CrossModalWeights()
-
     fusion_model = KalmanFusionModel(image_model, force_model, weight_model, fusion_type=args.fusion_type)
 
-    models = {'image': image_model, 'force': force_model, 'weight': weight_model}
-    # todo: need a different version of buddy... also probably need to load and save myself
     buddy = fannypack.utils.Buddy(experiment_name,
                                   fusion_model,
                                   optimizer_names=["im_meas", "force_meas",
-                                                   "im_dynamics", "force_dynamics",
+                                                   "dynamics", "dynamics_recurr",
                                                    "force_ekf", "im_ekf",
                                                    "fusion"],
                                   load_checkpoint=True,
                                   )
+
+    if args.load_checkpoint is not None:
+        if args.module_type == "all":
+            buddy.load_checkpoint(path = args.load_checkpoint)
+        if args.module_type == "ekf":
+            buddy.load_checkpoint_module(source="image_model", path=args.load_checkpoint)
+            buddy.load_checkpoint_module(source="force_model", path=args.load_checkpoint)
+
     print("Creating dataset...")
     # dataset_full = panda_datasets.PandaParticleFilterDataset(
     #     'data/gentle_push_10.hdf5',
@@ -85,23 +94,49 @@ if __name__ == '__main__':
         subsequence_length=32,
         **dataset_args
     )
+
+    dataset_dynamics = panda_datasets.PandaDynamicsDataset(
+        'data/gentle_push_{}.hdf5'.format(args.data_size),
+        subsequence_length=16,
+        **dataset_args)
+
+    #train everything
     if args.train == "all":
+        # training dynamics model
+
         dataloader_dynamics = torch.utils.data.DataLoader(
-            dynamics_recurrent_trainset, batch_size=args.batch, shuffle=True, num_workers=2, drop_last=True)
+            dataset_dynamics, batch_size=args.batch, shuffle=True, num_workers=2, drop_last=True)
 
         for i in range(args.pretrain):
             print("Training dynamics epoch", i)
-            training.train_dynamics_recurrent(buddy, image_model, dataloader_dynamics, optim_name="im_dynamics")
-            training.train_dynamics_recurrent(buddy, force_model, dataloader_dynamics, optim_name="force_dynamics")
+            training.train_dynamics(buddy, image_model,
+                                    dataloader_dynamics, optim_name="dynamics")
             print()
 
         buddy.save_checkpoint("phase_0_dynamics_pretrain")
+
+        # recurrence pretrain
+        dataloader_dynamics_recurr = torch.utils.data.DataLoader(
+            dynamics_recurrent_trainset, batch_size=args.batch, shuffle=True, num_workers=2, drop_last=True)
+
+        for i in range(args.pretrain):
+            print("Training recurr dynamics epoch", i)
+            training.train_dynamics_recurrent(buddy, image_model,
+                                              dataloader_dynamics_recurr, optim_name="dynamics_recurr")
+            print()
+
+
+        buddy.save_checkpoint("phase_1_dynamics_recurrent_pretrain")
+        #load force model from image model dynamics
+        buddy.load_checkpoint_module(source="image_model.dynamics_model",
+                                     target="force_model.dynamics_model",
+                                     label="phase_1_dynamics_recurrent_pretrain")
 
         measurement_trainset_loader = torch.utils.data.DataLoader(
             dataset_measurement,
             batch_size=args.batch*2,
             shuffle=True,
-            num_workers=16)
+            num_workers=8)
 
         for i in range(int(args.pretrain/2)):
             print("Training measurement epoch", i)
@@ -115,28 +150,29 @@ if __name__ == '__main__':
 
         buddy.save_checkpoint("phase_2_measurement_pretrain")
 
-        e2e_trainset_loader = torch.utils.data.DataLoader(e2e_trainset, batch_size=args.batch, shuffle=True, num_workers=2)
 
+    e2e_trainset_loader = torch.utils.data.DataLoader(e2e_trainset, batch_size=args.batch,
+                                                      shuffle=True, num_workers=2)
+    #train ekf (or all)
+    image_model.freeze_dynamics_model = True
+    force_model.freeze_dynamics_model = True
+    image_model.freeze_measurement_model = False
+    force_model.freeze_measurement_model = False
+
+    if args.train == "all" or args.train == "ekf":
         for i in range(args.pretrain):
             print("Training ekf epoch", i)
-            if i < args.pretrain/2:
-                obs_only=False
-            else:
-                obs_only=True
+            obs_only=False
             training.train_e2e(buddy, force_model,
                                e2e_trainset_loader, optim_name="force_ekf", obs_only=obs_only)
             training.train_e2e(buddy, image_model, e2e_trainset_loader, optim_name="im_ekf")
 
         buddy.save_checkpoint("phase_3_e2e")
 
-    e2e_trainset_loader = torch.utils.data.DataLoader(e2e_trainset, batch_size=args.batch, shuffle=True, num_workers=2)
-
+    # train fusion
     for i in range(args.epochs):
         print("Training fusion epoch", i)
-        if i < args.epochs/2:
-            obs_only=False
-        else:
-            obs_only=True
+        obs_only=False
         training.train_fusion(buddy, fusion_model, e2e_trainset_loader,
                               optim_name="fusion", obs_only=obs_only)
 

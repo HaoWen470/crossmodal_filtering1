@@ -87,7 +87,7 @@ if __name__ == '__main__':
             dataset_measurement,
             batch_size=args.batch*2,
             shuffle=True,
-            num_workers=16)
+            num_workers=8)
 
         for i in range(int(args.pretrain/2)):
             print("Training measurement epoch", i)
