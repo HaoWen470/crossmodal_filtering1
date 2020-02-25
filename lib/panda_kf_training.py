@@ -262,77 +262,91 @@ def train_e2e(buddy, ekf_model, dataloader,
             with buddy.log_scope(optim_name):
                 buddy.log("Training loss", loss)
 
-#todo: write the rollout code!
+def rollout_kf(kf_model, trajectories, start_time=0, max_timesteps=300,
+               noisy_dynamics=True, true_initial=False):
+    # To make things easier, we're going to cut all our trajectories to the
+    # same length :)
+    end_time = np.min([len(s) for s, _, _ in trajectories] +
+                      [start_time + max_timesteps])
+    actual_states = [states[start_time:end_time]
+                     for states, _, _ in trajectories]
 
-# def rollout_kf(kf_model, trajectories, start_time=0, max_timesteps=300,
-#             particle_count=100, noisy_dynamics=True, true_initial=False):
-#     # To make things easier, we're going to cut all our trajectories to the
-#     # same length :)
-#     end_time = np.min([len(s) for s, _, _ in trajectories] +
-#                       [start_time + max_timesteps])
-#     actual_states = [states[start_time:end_time]
-#                      for states, _, _ in trajectories]
-#
-#     state_dim = len(actual_states[0][0])
-#     N = len(trajectories)
-#     M = particle_count
-#
-#     device = next(kf_model.parameters()).device
-#
-#     # particles = np.zeros((N, M, state_dim))
-#     # if true_initial:
-#     #     for i in range(N):
-#     #         particles[i, :] = trajectories[i][0, 0]
-#     # else:
-#     #     # Distribute initial particles randomly
-#     #     particles += np.random.normal(0, 1.0, size=particles.shape)
-#
-#     # Populate the initial state estimate as just the estimate of our particles
-#     # This is a little hacky
-#     # predicted_states = [[np.mean(particles[i], axis=0)]
-#     #                     for i in range(len(trajectories))]
-#     #
-#     # particles = utils.to_torch(particles, device=device)
-#     # log_weights = torch.ones((N, M), device=device) * (-np.log(M))
-#
-#     for t in tqdm_notebook(range(start_time + 1, end_time)):
-#         s = []
-#         o = {}
-#         c = []
-#         for i, traj in enumerate(trajectories):
-#             states, observations, controls = traj
-#
-#             s.append(predicted_states[i][t - start_time - 1])
-#             o_t = utils.DictIterator(observations)[t]
-#             utils.DictIterator(o).append(o_t)
-#             c.append(controls[t])
-#
-#         s = np.array(s)
-#         utils.DictIterator(o).convert_to_numpy()
-#         c = np.array(c)
-#         (s, o, c) = utils.to_torch((s, o, c), device=device)
-#
-#         state_estimates, new_particles, new_log_weights = pf_model.forward(
-#             particles,
-#             log_weights,
-#             o,
-#             c,
-#             resample=True,
-#             noisy_dynamics=noisy_dynamics
-#         )
-#
-#         particles = new_particles
-#         log_weights = new_log_weights
-#
-#         for i in range(len(trajectories)):
-#             predicted_states[i].append(
-#                 utils.to_numpy(
-#                     state_estimates[i]))
-#
-#     predicted_states = np.array(predicted_states)
-#     actual_states = np.array(actual_states)
-#     return predicted_states, actual_states
+    state_dim = len(actual_states[0][0])
+    N = len(trajectories)
+    controls_dim = trajectories[0][-1, 0].shape
 
+    device = next(kf_model.parameters()).device
+
+    initial_states = np.zeros((N, state_dim))
+    initial_sigmas = np.ones((N, state_dim, state_dim)) * 0.5
+    initial_obs = {}
+
+    if true_initial:
+        for i in range(N):
+            initial_states[i] = trajectories[i][0, 0]
+    else:
+        # Put into measurement model!
+        dummy_controls = torch.ones((N,)+controls_dim,).to(device)
+        for i in range(N):
+            utils.DictIterator(initial_obs).append(utils.DictIterator(trajectories[i][1, 0]))
+
+        utils.DictIterator(initial_obs).convert_to_numpy()
+
+        (initial_obs_torch,
+         initial_states,
+         initial_sigmas) = utils.to_torch((initial_obs,
+                                           initial_states,
+                                           initial_sigmas), device=device)
+
+        initial_states, initial_sigmas = kf_model.forward(
+            initial_states,
+            initial_sigmas,
+            initial_obs,
+            dummy_controls,
+        )
+
+    states = initial_states
+    sigmas = initial_sigmas
+
+    predicted_states = [[initial_states[i]]
+                        for i in range(len(trajectories))]
+
+    for t in tqdm_notebook(range(start_time + 1, end_time)):
+        s = []
+        o = {}
+        c = []
+
+        for i, traj in enumerate(trajectories):
+            states, observations, controls = traj
+
+            o_t = utils.DictIterator(observations)[t]
+            utils.DictIterator(o).append(o_t)
+            c.append(controls[t])
+
+        s = np.array(s)
+        utils.DictIterator(o).convert_to_numpy()
+        c = np.array(c)
+        (s, o, c) = utils.to_torch((s, o, c), device=device)
+
+        state_estimates, sigma_estimates = kf_model.forward(
+            states,
+            sigmas,
+            o,
+            c,
+        )
+
+        states = state_estimates
+        sigmas = sigma_estimates
+
+        for i in range(len(trajectories)):
+            predicted_states[i].append(
+                utils.to_numpy(
+                    state_estimates[i]))
+
+    predicted_states = np.array(predicted_states)
+    actual_states = np.array(actual_states)
+
+    return predicted_states, actual_states
 
 def eval_rollout(predicted_states, actual_states, plot=False):
     if plot:
