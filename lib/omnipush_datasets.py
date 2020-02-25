@@ -8,17 +8,17 @@ from fannypack import utils
 from . import dpf
 
 
-def load_trajectories(*paths, use_vision=True,
-                      vision_interval=10, use_proprioception=True, use_haptics=True, **unused):
+def load_trajectories(*paths, use_vision=True, vision_interval=10,
+                      use_proprioception=True, use_haptics=True, **unused):
     """
-    Loads a list of trajectories from a set of input paths, where each trajectory is a tuple
-    containing...
+    Loads a list of trajectories from a set of input paths, where each
+    trajectory is a tuple containing...
         states: an (T, state_dim) array of state vectors
         observations: a key->(T, *) dict of observations
         controls: an (T, control_dim) array of control vectors
 
-    Each path can either be a string or a (string, int) tuple, where int indicates the maximum
-    number of timesteps to import.
+    Each path can either be a string or a (string, int) tuple, where int
+    indicates the maximum number of trajectories to import.
     """
     trajectories = []
 
@@ -34,10 +34,64 @@ def load_trajectories(*paths, use_vision=True,
                 if i >= count:
                     break
 
-                timesteps = len(utils.DictIterator(trajectory))
+                timesteps = len(trajectory['pos'])
 
-                # TODO: determine what our state, control, observations are
-                assert False
+                # Dimensions
+                state_dim = 2
+                obs_pos_dim = 3
+                obs_sensors_dim = 7
+
+                # Define our state:  we expect this to be:
+                # (x, z)
+                states = np.full((timesteps, state_dim), np.nan)
+                states[:, 0] = trajectory['pos'][:, 0]
+                states[:, 1] = trajectory['pos'][:, 2]
+
+                # Construct observations
+                #
+                # Note that only the first 3 elements of the F/T (sensors)
+                # vector is populated, because we only have force data
+                observations = {}
+                observations['gripper_pos'] = trajectory['tip']
+                observations['gripper_sensors'] = np.zeros(
+                    (timesteps, obs_sensors_dim))
+                observations['gripper_sensors'][:, :3] = trajectory['force']
+                observations['gripper_sensors'][:, 6] = trajectory['contact']
+                observations['image'] = np.mean(trajectory['image'], axis=-1)
+
+                # Construct controls
+                eef_positions = trajectory['tip']
+                eef_positions_shifted = np.roll(eef_positions, shift=-1)
+                eef_positions_shifted[-1] = eef_positions[-1]
+                controls = np.concatenate([
+                    eef_positions_shifted,
+                    eef_positions - eef_positions_shifted,
+                    trajectory['contact'][:, np.newaxis],
+                ], axis=1)
+                assert controls.shape == (timesteps, 7)
+
+                # Normalization
+                observations['gripper_pos'] -= np.array(
+                    [[-0.00399523, 0., 0.00107464]])
+                observations['gripper_pos'] /= np.array(
+                    [[0.07113902, 1., 0.0682641]])
+                observations['gripper_sensors'] -= np.array(
+                    [[-1.88325821e-01, -8.78638581e-02, -1.91555331e-04,
+                      0., 0., 0., 6.49803922e-01]])
+                observations['gripper_sensors'] /= np.array(
+                    [[2.04928469, 2.04916813, 0.00348241, 1., 1., 1.,
+                      0.47703122]])
+                states -= np.array([[0.00111589, 0.0021941]])
+                states /= np.array([[0.06644539, 0.06786165]])
+                controls -= np.array(
+                    [[-3.39131082e-06, 9.89458979e-04, -3.91004959e-03,
+                      -3.99184253e-03, -9.89458979e-04, 4.98469281e-03,
+                      6.49803922e-01]])
+                controls /= np.array(
+                    [[0.01032934, 0.06751064, 0.07186062, 0.07038562,
+                      0.06751064, 0.09715582, 0.47703122]])
+
+                trajectories.append((states, observations, controls))
 
     ## Uncomment this line to generate the lines required to normalize data
     # _print_normalization(trajectories)
@@ -192,7 +246,8 @@ class OmnipushMeasurementDataset(torch.utils.data.Dataset):
         log_likelihood = np.asarray(scipy.stats.multivariate_normal.logpdf(
             noisy_state[:2], mean=state[:2], cov=np.diag(self.stddev[:2] ** 2)))
 
-        return utils.to_torch((noisy_state, observation, log_likelihood, state))
+        return utils.to_torch(
+            (noisy_state, observation, log_likelihood, state))
 
     def __len__(self):
         """
