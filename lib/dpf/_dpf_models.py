@@ -47,7 +47,9 @@ class ParticleFilterNetwork(nn.Module):
         self.freeze_measurement_model = False
 
     def forward(self, states_prev, log_weights_prev, observations, controls,
-                resample=True, state_estimation_method="weighted_average", noisy_dynamics=True):
+                resample=True, output_particles=None,
+                state_estimation_method="weighted_average",
+                noisy_dynamics=True):
         # states_prev: (N, M, *)
         # log_weights_prev: (N, M)
         # observations: (N, *)
@@ -57,7 +59,29 @@ class ParticleFilterNetwork(nn.Module):
         # M := particle count
 
         N, M, state_dim = states_prev.shape
+        device = states_prev.device
         assert log_weights_prev.shape == (N, M)
+        if output_particles is None:
+            output_particles = M
+
+        # Expand or contract particle set if we're not resampling
+        if not resample and output_particles != M:
+            resized_states = torch.zeros((N, output_particles, state_dim), device=device)
+            resized_log_weights = torch.zeros((N, output_particles), device=device)
+
+            for i in range(N):
+                # Randomly sample some particles from our input
+                # We sample with replacement only if necessary
+                indices = torch.multinomial(
+                    torch.ones_like(log_weights_pred, device=device),
+                    num_samples=M,
+                    replacement=(output_particles > M))
+
+                resized_states[i] = states_prev[i][indices]
+                resized_log_weights[i] = log_weights_prev[i][indices]
+
+            states_prev = resized_states
+            log_weights_prev = resized_log_weights
 
         # Dynamics update
         states_pred = self.dynamics_model(
@@ -114,16 +138,27 @@ class ParticleFilterNetwork(nn.Module):
             else:
                 # Standard particle filter re-sampling -- this kills gradients
                 # :(
-                states = torch.zeros_like(states_pred)
+                assert log_weights_pred.shape == (N, M)
+                distribution = torch.distributions.Categorical(
+                    logits=log_weights_pred)
+                state_indices = distribution.sample((output_particles, )).T
+                assert state_indices.shape == (N, output_particles)
+
+                states = torch.zeros_like(states_pred, device=device)
                 for i in range(N):
-                    indices = torch.multinomial(
-                        torch.exp(log_weights_pred[i]),
-                        num_samples=M,
-                        replacement=True)
-                    states[i] = states_pred[i][indices]
+                    states[i] = states_pred[i][state_indices[i]]
+
+                # states = torch.zeros_like(states_pred)
+                # for i in range(N):
+                #     indices = torch.multinomial(
+                #         torch.exp(log_weights_pred[i]),
+                #         num_samples=output_particles,
+                #         replacement=True)
+                #     states[i] = states_pred[i][indices]
 
                 # Uniform weights
-                log_weights = torch.zeros_like(log_weights_pred) - np.log(M)
+                log_weights = torch.zeros(
+                    (N, output_particles), device=device) - np.log(output_particles)
         else:
             # Just use predicted states as output
             states = states_pred
@@ -133,7 +168,7 @@ class ParticleFilterNetwork(nn.Module):
                 torch.logsumexp(log_weights_pred, dim=1)[:, np.newaxis]
 
         assert state_estimates.shape == (N, state_dim)
-        assert states.shape == (N, M, state_dim)
-        assert log_weights.shape == (N, M)
+        assert states.shape == (N, output_particles, state_dim)
+        assert log_weights.shape == (N, output_particles)
 
         return state_estimates, states, log_weights

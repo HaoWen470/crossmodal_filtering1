@@ -8,33 +8,6 @@ from fannypack import utils
 from . import dpf
 
 
-# ['image'
-# 'depth'
-# 'proprio'
-# 'joint_pos'
-# 'joint_vel'
-# 'gripper_qpos'
-# 'gripper_qvel'
-# 'eef_pos'
-# 'eef_quat'
-# 'eef_vlin'
-# 'eef_vang'
-# 'force'
-# 'force_hi_freq'
-# 'contact'
-# 'robot-state'
-# 'prev-act'
-# 'Cylinder0_pos'
-# 'Cylinder0_quat'
-# 'Cylinder0_to_eef_pos'
-# 'Cylinder0_to_eef_quat'
-# 'Cylinder0_mass'
-# 'Cylinder0_friction'
-# 'object-state'
-# 'action'
-# 'object_z_angle'])
-
-
 def load_trajectories(*paths, use_vision=True, vision_interval=10,
                       use_proprioception=True, use_haptics=True, **unused):
     """
@@ -61,58 +34,33 @@ def load_trajectories(*paths, use_vision=True, vision_interval=10,
                 if i >= count:
                     break
 
-                timesteps = len(utils.DictIterator(trajectory))
+                timesteps = len(trajectory['pos'])
+
+                # Dimensions
+                state_dim = 2
+                obs_pos_dim = 3
+                obs_sensors_dim = 7
 
                 # Define our state:  we expect this to be:
-                # (x, y, cos theta, sin theta, mass, friction)
-                # TODO: add mass, friction
-                state_dim = 2
+                # (x, z)
                 states = np.full((timesteps, state_dim), np.nan)
+                states[:, 0] = trajectory['pos'][:, 0]
+                states[:, 1] = trajectory['pos'][:, 2]
 
-                states[:, :2] = trajectory['Cylinder0_pos'][:, :2]  # x, y
-                # states[:, 2] = np.cos(trajectory['object_z_angle'])
-                # states[:, 3] = np.sin(trajectory['object_z_angle'])
-                # states[:, 4] = trajectory['Cylinder0_mass'][:, 0]
-                # states[:, 5] = trajectory['Cylinder0_friction'][:, 0]
-
-                # Zero out everything but XY position
-                # TODO: remove this
-                states[:, 2:] *= 0
-
-                # Pull out observations
-                ## This is currently consisted of:
-                ## > gripper_pos: end effector position
-                ## > gripper_sensors: F/T, contact sensors
-                ## > image: camera image
-
+                # Construct observations
+                #
+                # Note that only the first 3 elements of the F/T (sensors)
+                # vector is populated, because we only have force data
                 observations = {}
-                observations['gripper_pos'] = trajectory['eef_pos']
-                assert observations['gripper_pos'].shape == (timesteps, 3)
+                observations['gripper_pos'] = trajectory['tip']
+                observations['gripper_sensors'] = np.zeros(
+                    (timesteps, obs_sensors_dim))
+                observations['gripper_sensors'][:, :3] = trajectory['force']
+                observations['gripper_sensors'][:, 6] = trajectory['contact']
+                observations['image'] = np.mean(trajectory['image'], axis=-1)
 
-                observations['gripper_sensors'] = np.concatenate((
-                    trajectory['force'],
-                    trajectory['contact'][:, np.newaxis],
-                ), axis=1)
-                assert observations['gripper_sensors'].shape[1] == 7
-
-                if not use_proprioception:
-                    observations['gripper_pos'][:] = 0
-                if not use_haptics:
-                    observations['gripper_sensors'][:] = 0
-
-                observations['image'] = np.zeros_like(trajectory['image'])
-                if use_vision:
-                    for i in range(len(observations['image'])):
-                        index = (i // vision_interval) * vision_interval
-                        index = min(index, len(observations['image']))
-                        observations['image'][i] = trajectory['image'][index]
-
-                # Pull out controls
-                ## This is currently consisted of:
-                ## > previous end effector position
-                ## > end effector position delta
-                ## > binary contact reading
-                eef_positions = trajectory['eef_pos']
+                # Construct controls
+                eef_positions = trajectory['tip']
                 eef_positions_shifted = np.roll(eef_positions, shift=-1)
                 eef_positions_shifted[-1] = eef_positions[-1]
                 controls = np.concatenate([
@@ -123,27 +71,25 @@ def load_trajectories(*paths, use_vision=True, vision_interval=10,
                 assert controls.shape == (timesteps, 7)
 
                 # Normalization
-
                 observations['gripper_pos'] -= np.array(
-                    [[0.46806443, -0.0017836, 0.88028437]], dtype=np.float32)
+                    [[-0.00399523, 0., 0.00107464]])
                 observations['gripper_pos'] /= np.array(
-                    [[0.02410769, 0.02341035, 0.04018243]], dtype=np.float32)
+                    [[0.07113902, 1., 0.0682641]])
                 observations['gripper_sensors'] -= np.array(
-                    [[4.9182904e-01, 4.5039989e-02, -3.2791464e+00,
-                      -3.3874984e-03, 1.1552566e-02, -8.4817986e-04,
-                      2.1303751e-01]], dtype=np.float32)
+                    [[-1.88325821e-01, -8.78638581e-02, -1.91555331e-04,
+                      0., 0., 0., 6.49803922e-01]])
                 observations['gripper_sensors'] /= np.array(
-                    [[1.6152629, 1.666905, 1.9186896, 0.14219016, 0.14232528,
-                      0.01675198, 0.40950698]], dtype=np.float32)
-                states -= np.array([[0.4970164, -0.00916641]])
-                states /= np.array([[0.0572766, 0.06118315]])
+                    [[2.04928469, 2.04916813, 0.00348241, 1., 1., 1.,
+                      0.47703122]])
+                states -= np.array([[0.00111589, 0.0021941]])
+                states /= np.array([[0.06644539, 0.06786165]])
                 controls -= np.array(
-                    [[3.2848225e-04, 8.7676758e-01, 4.6962801e-01,
-                      4.6772522e-01, -8.7855840e-01, 4.1107172e-01,
-                      2.1303751e-01]], dtype=np.float32)
+                    [[-3.39131082e-06, 9.89458979e-04, -3.91004959e-03,
+                      -3.99184253e-03, -9.89458979e-04, 4.98469281e-03,
+                      6.49803922e-01]])
                 controls /= np.array(
-                    [[0.03975769, 0.07004428, 0.03383452, 0.04635485,
-                      0.07224426, 0.05950112, 0.40950698]], dtype=np.float32)
+                    [[0.01032934, 0.06751064, 0.07186062, 0.07038562,
+                      0.06751064, 0.09715582, 0.47703122]])
 
                 trajectories.append((states, observations, controls))
 
@@ -179,7 +125,7 @@ def _print_normalization(trajectories):
     )
 
 
-class PandaDynamicsDataset(torch.utils.data.Dataset):
+class OmnipushDynamicsDataset(torch.utils.data.Dataset):
     """A customized data preprocessor for trajectories
     """
 
@@ -237,7 +183,7 @@ class PandaDynamicsDataset(torch.utils.data.Dataset):
         return len(self.dataset)
 
 
-class PandaMeasurementDataset(torch.utils.data.Dataset):
+class OmnipushMeasurementDataset(torch.utils.data.Dataset):
     """A customized data preprocessor for trajectories
     """
     # (x, y, cos theta, sin theta, mass, friction)
@@ -310,9 +256,9 @@ class PandaMeasurementDataset(torch.utils.data.Dataset):
         return len(self.dataset) * self.samples_per_pair
 
 
-class PandaSubsequenceDataset(dpf.SubsequenceDataset):
+class OmnipushSubsequenceDataset(dpf.SubsequenceDataset):
     """A data preprocessor for producing overlapping subsequences from
-    Panda trajectories.
+    Omnipush trajectories.
     """
     default_subsequence_length = 20
 
@@ -327,9 +273,9 @@ class PandaSubsequenceDataset(dpf.SubsequenceDataset):
         super().__init__(trajectories, **kwargs)
 
 
-class PandaParticleFilterDataset(dpf.ParticleFilterDataset):
+class OmnipushParticleFilterDataset(dpf.ParticleFilterDataset):
     """A data preprocessor for producing overlapping subsequences + initial
-    particle sets from Panda trajectories.
+    particle sets from Omnipush trajectories.
     """
     # (x, y, cos theta, sin theta, mass, friction)
     # TODO: fix default variances for mass, friction
@@ -346,31 +292,4 @@ class PandaParticleFilterDataset(dpf.ParticleFilterDataset):
         """
 
         trajectories = load_trajectories(*paths, **kwargs)
-
-        # Split up trajectories into subsequences
         super().__init__(trajectories, **kwargs)
-
-        # Post-process subsequences; differentiate between active ones and
-        # inactive ones
-        active_subsequences = []
-        inactive_subsequences = []
-
-        for subsequence in self.subsequences:
-            start_state = subsequence[0][0]
-            end_state = subsequence[0][-1]
-            if np.linalg.norm(start_state - end_state) > 1e-5:
-                active_subsequences.append(subsequence)
-            else:
-                inactive_subsequences.append(subsequence)
-
-        print("Parsed data: {} active, {} inactive".format(
-            len(active_subsequences), len(inactive_subsequences)))
-        keep_count = min(
-            len(active_subsequences) // 2,
-            len(inactive_subsequences)
-        )
-        print("Keeping (inactive):", keep_count)
-
-        np.random.shuffle(inactive_subsequences)
-        self.subsequences = active_subsequences + \
-            inactive_subsequences[:keep_count]

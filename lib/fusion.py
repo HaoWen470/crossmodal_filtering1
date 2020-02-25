@@ -1,6 +1,7 @@
 import numpy as np
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 from fannypack.nn import resblocks
 from fannypack import utils
@@ -64,6 +65,7 @@ class KalmanFusionModel(nn.Module):
                 weighted_sigma = 1.0/(sigma_as_weights.sum(0))
                 state_sigma = torch.diag_embed(weighted_sigma, offset=0, dim1=-2, dim2=-1)
 
+
             return state, state_sigma, force_state, image_state
 
     def weighted_average(self, predictions, weights):
@@ -71,7 +73,6 @@ class KalmanFusionModel(nn.Module):
         assert predictions.shape == weights.shape
 
         weights = weights / (torch.sum(weights, dim=0) + 1e-9)
-
         weighted_average = torch.sum(weights * predictions, dim=0)
 
         # print("pred: ", predictions)
@@ -85,7 +86,6 @@ class KalmanFusionModel(nn.Module):
         mu = (predictions * T).sum(0) * (1.0/ T.sum(0))
         var = (1.0/T.sum(0))
         return mu
-
 
 class CrossModalWeights(nn.Module):
 

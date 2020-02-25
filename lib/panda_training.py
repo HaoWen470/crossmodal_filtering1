@@ -9,8 +9,8 @@ from fannypack import utils
 from . import dpf
 
 
-def train_dynamics_recurrent(
-        buddy, pf_model, dataloader, log_interval=10, loss_type="l1"):
+def train_dynamics_recurrent(buddy, pf_model, dataloader, log_interval=10,
+                             loss_type="l1", optim_name="dynamics_recurrent"):
 
     assert loss_type in ('l1', 'l2', 'huber', 'peter')
 
@@ -110,11 +110,11 @@ def train_dynamics_recurrent(
         epoch_losses.append(loss)
         buddy.minimize(
             loss,
-            optimizer_name="dynamics_recurrent",
+            optimizer_name=optim_name,
             checkpoint_interval=10000)
 
         if buddy.optimizer_steps % log_interval == 0:
-            with buddy.log_scope("dynamics_recurrent"):
+            with buddy.log_scope(optim_name):
                 buddy.log("Training loss", loss)
 
                 buddy.log("Label delta mean", label_deltas.mean())
@@ -133,7 +133,8 @@ def train_dynamics_recurrent(
     print("Epoch loss:", np.mean(utils.to_numpy(epoch_losses)))
 
 
-def train_dynamics(buddy, pf_model, dataloader, log_interval=10):
+def train_dynamics(buddy, pf_model, dataloader,
+                   log_interval=10, optim_name="dynamics"):
     losses = []
 
     # Train dynamics only for 1 epoch
@@ -157,11 +158,11 @@ def train_dynamics(buddy, pf_model, dataloader, log_interval=10):
 
         buddy.minimize(
             loss,
-            optimizer_name="dynamics",
+            optimizer_name=optim_name,
             checkpoint_interval=10000)
 
         if buddy.optimizer_steps % log_interval == 0:
-            with buddy.log_scope("dynamics"):
+            with buddy.log_scope(optim_name):
                 # buddy.log("Training loss", loss)
                 buddy.log("MSE position", mse_pos)
 
@@ -181,7 +182,8 @@ def train_dynamics(buddy, pf_model, dataloader, log_interval=10):
     print("Epoch loss:", np.mean(losses))
 
 
-def train_measurement(buddy, pf_model, dataloader, log_interval=10):
+def train_measurement(buddy, pf_model, dataloader,
+                      log_interval=10, optim_name="measurement"):
     losses = []
 
     # Train measurement model only for 1 epoch
@@ -201,11 +203,11 @@ def train_measurement(buddy, pf_model, dataloader, log_interval=10):
 
         buddy.minimize(
             loss,
-            optimizer_name="measurement",
+            optimizer_name=optim_name,
             checkpoint_interval=10000)
 
         if buddy.optimizer_steps % log_interval == 0:
-            with buddy.log_scope("measurement"):
+            with buddy.log_scope(optim_name):
                 buddy.log("Training loss", loss)
 
                 buddy.log("Pred likelihoods mean", pred_likelihoods.mean())
@@ -217,7 +219,8 @@ def train_measurement(buddy, pf_model, dataloader, log_interval=10):
     print("Epoch loss:", np.mean(losses))
 
 
-def train_e2e(buddy, pf_model, dataloader, log_interval=2, loss_type="gmm"):
+def train_e2e(buddy, pf_model, dataloader, log_interval=2,
+              loss_type="mse", optim_name="e2e"):
     # Train for 1 epoch
     for batch_idx, batch in enumerate(tqdm_notebook(dataloader)):
         # Transfer to GPU and pull out batch data
@@ -276,11 +279,11 @@ def train_e2e(buddy, pf_model, dataloader, log_interval=2, loss_type="gmm"):
 
         buddy.minimize(
             torch.mean(torch.stack(losses)),
-            optimizer_name="e2e",
+            optimizer_name=optim_name,
             checkpoint_interval=10000)
 
         if buddy.optimizer_steps % log_interval == 0:
-            with buddy.log_scope("e2e"):
+            with buddy.log_scope(optim_name):
                 buddy.log("Training loss", loss)
                 buddy.log("Log weights mean", log_weights.mean())
                 buddy.log("Log weights std", log_weights.std())
