@@ -404,11 +404,17 @@ class PandaEKFMeasurementModel(dpf.MeasurementModel):
 
         self.observation_pose_layers = nn.Sequential(
             nn.Linear(obs_pose_dim, units),
-            resblocks.Linear(units, activation='leaky_relu'),
+            resblocks.Linear(
+                units,
+                activation='leaky_relu',
+                activations_inplace=False),
         )
         self.observation_sensors_layers = nn.Sequential(
             nn.Linear(obs_sensors_dim, units),
-            resblocks.Linear(units, activation='leaky_relu'),
+            resblocks.Linear(
+                units,
+                activation='leaky_relu',
+                activations_inplace=False),
         )
         self.state_layers = nn.Sequential(
             nn.Linear(self.state_dim, units),
@@ -425,13 +431,19 @@ class PandaEKFMeasurementModel(dpf.MeasurementModel):
         self.r_layer = nn.Sequential(
             nn.Linear(units, self.state_dim),
             nn.ReLU(inplace=True),
-            resblocks.Linear(self.state_dim, activation="relu_false"),
+            resblocks.Linear(
+                self.state_dim,
+                activation='relu',
+                activations_inplace=False),
         )
 
         self.z_layer = nn.Sequential(
             nn.Linear(units, self.state_dim),
             nn.ReLU(inplace=True),
-            resblocks.Linear(self.state_dim, activation="relu_false"),
+            resblocks.Linear(
+                self.state_dim,
+                activation='relu',
+                activations_inplace=False),
         )
 
         self.units = units
@@ -473,7 +485,7 @@ class PandaEKFMeasurementModel(dpf.MeasurementModel):
 
         if self.use_states:
             # (N, units)
-                    # (N, state_dim) => (N, units)
+            # (N, state_dim) => (N, units)
             state_features = self.state_layers(states)
         else:
             state_features = self.state_layers(
