@@ -27,7 +27,7 @@ import fannypack
 from . import dpf
 
 def train_dynamics(buddy, kf_model, dataloader, log_interval=10,
-        optim_name="dynamics", checkpoint_interval=50, init_state_noise=0.5):
+        optim_name="dynamics", checkpoint_interval=10000, init_state_noise=0.5):
 
     for batch_idx, batch in enumerate(dataloader):
         prev_state, observation, control, new_state = fannypack.utils.to_device(batch, buddy._device)
@@ -43,7 +43,7 @@ def train_dynamics(buddy, kf_model, dataloader, log_interval=10,
 def train_dynamics_recurrent(
         buddy, kf_model, dataloader, log_interval=10,
         loss_type="l2",
-        optim_name="dynamics_recurr", checkpoint_interval=50, init_state_noise=0.5):
+        optim_name="dynamics_recurr", checkpoint_interval=10000, init_state_noise=0.5):
     epoch_losses = []
 
     assert loss_type in ('l1', 'l2')
@@ -202,7 +202,7 @@ def train_fusion(buddy, fusion_model, dataloader, log_interval=2,
         buddy.minimize(
             loss,
             optimizer_name= optim_name,
-            checkpoint_interval=50)
+            checkpoint_interval=10000)
 
         if buddy.optimizer_steps % log_interval == 0:
             with buddy.log_scope("fusion"):
@@ -215,7 +215,7 @@ def train_fusion(buddy, fusion_model, dataloader, log_interval=2,
 def train_e2e(buddy, ekf_model, dataloader,
               log_interval=2, optim_name="ekf",
               obs_only=False,
-              checkpoint_interval = 50,
+              checkpoint_interval = 10000,
               init_state_noise=0.2,
               ):
     # Train for 1 epoch

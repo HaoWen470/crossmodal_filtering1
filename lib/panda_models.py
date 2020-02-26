@@ -108,7 +108,7 @@ class PandaDynamicsModel(dpf.DynamicsModel):
         )
 
         self.units = units
-        self.Q = torch.from_numpy(np.diag(np.array(self.state_noise_stddev)))
+        self.Q = torch.from_numpy(np.diag(np.array(self.state_noise_stddev))).float()
 
     def forward(self, states_prev, controls, noisy=False):
         # states_prev:  (N, M, state_dim)
