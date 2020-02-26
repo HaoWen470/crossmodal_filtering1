@@ -29,6 +29,7 @@ if __name__ == '__main__':
     parser.add_argument("--blackout", type=float, default=0.0)
     parser.add_argument("--mass", action="store_true")
     parser.add_argument("--omnipush", action="store_true")
+    parser.add_argument("--hidden_units", type=int, default=128)
 
     args = parser.parse_args()
 
@@ -41,7 +42,7 @@ if __name__ == '__main__':
         'image_blackout_ratio': args.blackout,
         'use_mass': args.mass,
     }
-    measurement = PandaEKFMeasurementModel()
+    measurement = PandaEKFMeasurementModel(units=args.hidden_units)
     dynamics = PandaDynamicsModel(use_particles=False)
     ekf = KalmanFilterNetwork(dynamics, measurement)
     print("Creating model...")
