@@ -32,6 +32,7 @@ if __name__ == '__main__':
     parser.add_argument("--omnipush", action="store_true")
     parser.add_argument("--lr", type=float, default=1e-4)
     parser.add_argument("--hidden_units", type=int, default=128)
+    parser.add_argument("--one_loss", action="store_true")
     args = parser.parse_args()
 
     experiment_name = args.experiment_name
@@ -219,6 +220,6 @@ if __name__ == '__main__':
         print("Training fusion epoch", i)
         obs_only=False
         training.train_fusion(buddy, fusion_model, e2e_trainset_loader,
-                              optim_name="fusion", obs_only=obs_only)
+                              optim_name="fusion", obs_only=obs_only, one_loss=args.one_loss)
 
     buddy.save_checkpoint("phase_4_fusion")
