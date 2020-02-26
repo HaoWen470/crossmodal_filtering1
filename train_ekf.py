@@ -1,7 +1,7 @@
 import torch
 import fannypack
 
-from lib import panda_datasets
+from lib import panda_datasets, omnipush_datasets
 from lib.ekf import KalmanFilterNetwork
 from fannypack import utils
 from lib import dpf
@@ -57,7 +57,7 @@ if __name__ == '__main__':
     #     **dataset_args)
 
     if args.omnipush:
-        e2e_trainset = panda_datasets.PandaParticleFilterDataset(
+        e2e_trainset = omnipush_datasets.OmnipushParticleFilterDataset(
             "omnipush_data/ellip1_trainset.hdf5",
             "omnipush_data/ellip2_trainset.hdf5",
             "omnipush_data/ellip3_trainset.hdf5",
@@ -68,7 +68,7 @@ if __name__ == '__main__':
             **dataset_args
         )
 
-        dataset_measurement = panda_datasets.PandaMeasurementDataset(
+        dataset_measurement = omnipush_datasets.OmnipushMeasurementDataset(
             "omnipush_data/ellip1_trainset.hdf5",
             "omnipush_data/ellip2_trainset.hdf5",
             "omnipush_data/ellip3_trainset.hdf5",
@@ -78,7 +78,7 @@ if __name__ == '__main__':
             samples_per_pair=20,
             **dataset_args)
 
-        dynamics_recurrent_trainset = panda_datasets.PandaSubsequenceDataset(
+        dynamics_recurrent_trainset = omnipush_datasets.OmnipushSubsequenceDataset(
             "omnipush_data/ellip1_trainset.hdf5",
             "omnipush_data/ellip2_trainset.hdf5",
             "omnipush_data/ellip3_trainset.hdf5",
@@ -87,14 +87,14 @@ if __name__ == '__main__':
             **dataset_args
         )
 
-        dataset_dynamics = panda_datasets.PandaDynamicsDataset(
+        dataset_dynamics = omnipush_datasets.OmnipushDynamicsDataset(
             "omnipush_data/ellip1_trainset.hdf5",
             "omnipush_data/ellip2_trainset.hdf5",
             "omnipush_data/ellip3_trainset.hdf5",
             subsequence_length=16,
             **dataset_args)
     else:
-            e2e_trainset = panda_datasets.PandaParticleFilterDataset(
+        e2e_trainset = panda_datasets.PandaParticleFilterDataset(
             "data/gentle_push_{}.hdf5".format(args.data_size),
             subsequence_length=16,
             particle_count=1,

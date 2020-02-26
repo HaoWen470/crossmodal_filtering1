@@ -65,7 +65,7 @@ def load_trajectories(*paths, use_vision=True, vision_interval=10,
                 if i >= count:
                     break
 
-                timesteps = len(utils.DictIterator(trajectory))
+                timesteps = len(trajectory['Cylinder0_pos'])
 
                 # Define our state:  we expect this to be:
                 # (x, y, cos theta, sin theta, mass, friction)
