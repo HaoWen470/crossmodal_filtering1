@@ -73,8 +73,8 @@ class ParticleFilterNetwork(nn.Module):
                 # Randomly sample some particles from our input
                 # We sample with replacement only if necessary
                 indices = torch.multinomial(
-                    torch.ones_like(log_weights_pred, device=device),
-                    num_samples=M,
+                    torch.ones_like(log_weights_prev[i], device=device),
+                    num_samples=output_particles,
                     replacement=(output_particles > M))
 
                 resized_states[i] = states_prev[i][indices]

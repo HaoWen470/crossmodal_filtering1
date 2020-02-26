@@ -28,7 +28,8 @@ class ParticleFusionModel(nn.Module):
         if resample:
             output_particles = M
         else:
-            output_particles = M / 2
+            assert M % 2 == 0
+            output_particles = M // 2
 
         # Propagate particles through each particle filter
         image_state_estimates, image_states_pred, image_log_weights_pred = self.image_model(
@@ -82,9 +83,10 @@ class ParticleFusionModel(nn.Module):
             force_log_weights_pred + force_log_beta,
         ], dim=1)
 
-        assert log_weights_pred.shape == (N, 2 * M)
-        assert states_pred.shape == (N, 2 * M, state_dim)
         if resample:
+            assert log_weights_pred.shape == (N, 2 * M)
+            assert states_pred.shape == (N, 2 * M, state_dim)
+
             # Resample particles
             distribution = torch.distributions.Categorical(
                 logits=log_weights_pred)
