@@ -11,6 +11,7 @@ from lib.fusion import CrossModalWeights
 
 import lib.panda_kf_training as training
 import argparse
+import gc
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -33,6 +34,8 @@ if __name__ == '__main__':
     parser.add_argument("--lr", type=float, default=1e-4)
     parser.add_argument("--hidden_units", type=int, default=128)
     parser.add_argument("--one_loss", action="store_true")
+    parser.add_argument("--init_state_noise", type=float, default=0.2)
+
     args = parser.parse_args()
 
     experiment_name = args.experiment_name
@@ -43,6 +46,14 @@ if __name__ == '__main__':
         'vision_interval': 2,
         'image_blackout_ratio': args.blackout,
         'use_mass': args.mass,
+        'hidden_units': args.hidden_units,
+        'batch': args.batch,
+        'pretrain epochs': args.pretrain,
+        'omnipush dataset': args.omnipush,
+        'start training from': args.train,
+        'epochs': args.epochs,
+        'loading checkpoint': args.load_checkpoint,
+        'init state noise': args.init_state_noise
     }
     # image_modality_model
     image_measurement = PandaEKFMeasurementModel(missing_modalities=['gripper_sensors'], units=args.hidden_units)
@@ -66,6 +77,7 @@ if __name__ == '__main__':
                                                    "fusion"],
                                   load_checkpoint=True,
                                   )
+    buddy.add_metadata(dataset_args)
 
     if args.load_checkpoint is not None:
         if args.module_type == "all":
@@ -220,6 +232,8 @@ if __name__ == '__main__':
         print("Training fusion epoch", i)
         obs_only=False
         training.train_fusion(buddy, fusion_model, e2e_trainset_loader,
-                              optim_name="fusion", obs_only=obs_only, one_loss=args.one_loss)
-
+                              optim_name="fusion", obs_only=obs_only, one_loss=args.one_loss,
+                              init_state_noise=args.init_state_noise)
+        gc.collect()
+    buddy.save_checkpoint()
     buddy.save_checkpoint("phase_4_fusion")

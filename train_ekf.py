@@ -30,6 +30,7 @@ if __name__ == '__main__':
     parser.add_argument("--mass", action="store_true")
     parser.add_argument("--omnipush", action="store_true")
     parser.add_argument("--hidden_units", type=int, default=128)
+    parser.add_argument("--init_state_noise", type=float, default=0.2)
 
     args = parser.parse_args()
 
@@ -41,6 +42,13 @@ if __name__ == '__main__':
         'vision_interval': 2,
         'image_blackout_ratio': args.blackout,
         'use_mass': args.mass,
+        'hidden_units': args.hidden_units,
+        'batch': args.batch,
+        'pretrain epochs': args.pretrain,
+        'omnipush dataset': args.omnipush,
+        'start training from': args.train,
+        'epochs': args.epoch,
+        'init state noise': args.init_state_noise,
     }
     measurement = PandaEKFMeasurementModel(units=args.hidden_units)
     dynamics = PandaDynamicsModel(use_particles=False)
@@ -148,16 +156,10 @@ if __name__ == '__main__':
     e2e_trainset_loader = torch.utils.data.DataLoader(e2e_trainset, batch_size=args.batch, shuffle=True, num_workers=2)
 
     for i in range(args.epochs):
-
-        if args.obs_only:
-            obs_only = True
-        else:
-            if i < args.epochs / 2:
-                obs_only = False
-            else:
-                obs_only = True
+        obs_only=False
         print("Training ekf epoch", i)
         training.train_e2e(buddy, ekf, e2e_trainset_loader,
-                           optim_name="ekf", obs_only=obs_only)
+                           optim_name="ekf", obs_only=obs_only, init_state_noise=args.init_state_noise)
 
     buddy.save_checkpoint("phase_3_e2e")
+    buddy.save_checkpoint()
