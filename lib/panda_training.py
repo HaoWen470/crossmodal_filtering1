@@ -2,7 +2,8 @@ import torch
 import torch.nn.functional as F
 import numpy as np
 import matplotlib.pyplot as plt
-from tqdm import tqdm_notebook
+# from tqdm import tqdm_notebook as tqdm
+from tqdm import tqdm
 
 from fannypack import utils
 
@@ -17,7 +18,7 @@ def train_dynamics_recurrent(buddy, pf_model, dataloader, log_interval=10,
     # Train dynamics only for 1 epoch
     # Train for 1 epoch
     epoch_losses = []
-    for batch_idx, batch in enumerate(tqdm_notebook(dataloader)):
+    for batch_idx, batch in enumerate(tqdm(dataloader)):
         # Transfer to GPU and pull out batch data
         batch_gpu = utils.to_device(batch, buddy._device)
         batch_states, batch_obs, batch_controls = batch_gpu
@@ -139,7 +140,7 @@ def train_dynamics(buddy, pf_model, dataloader,
 
     # Train dynamics only for 1 epoch
     # Train for 1 epoch
-    for batch_idx, batch in enumerate(tqdm_notebook(dataloader)):
+    for batch_idx, batch in enumerate(tqdm(dataloader)):
         # Transfer to GPU and pull out batch data
         batch_gpu = utils.to_device(batch, buddy._device)
         prev_states, _unused_observations, controls, new_states = batch_gpu
@@ -187,7 +188,7 @@ def train_measurement(buddy, pf_model, dataloader,
     losses = []
 
     # Train measurement model only for 1 epoch
-    for batch_idx, batch in enumerate(tqdm_notebook(dataloader)):
+    for batch_idx, batch in enumerate(tqdm(dataloader)):
         # Transfer to GPU and pull out batch data
         batch_gpu = utils.to_device(batch, buddy._device)
         noisy_states, observations, log_likelihoods, _ = batch_gpu
@@ -220,9 +221,9 @@ def train_measurement(buddy, pf_model, dataloader,
 
 
 def train_e2e(buddy, pf_model, dataloader, log_interval=2,
-              loss_type="mse", optim_name="e2e"):
+              loss_type="mse", optim_name="e2e", resample=False):
     # Train for 1 epoch
-    for batch_idx, batch in enumerate(tqdm_notebook(dataloader)):
+    for batch_idx, batch in enumerate(tqdm(dataloader)):
         # Transfer to GPU and pull out batch data
         batch_gpu = utils.to_device(batch, buddy._device)
         batch_particles, batch_states, batch_obs, batch_controls = batch_gpu
@@ -248,7 +249,7 @@ def train_e2e(buddy, pf_model, dataloader, log_interval=2,
                 prev_log_weights,
                 utils.DictIterator(batch_obs)[:, t - 1, :],
                 batch_controls[:, t, :],
-                resample=False,
+                resample=resample,
                 noisy_dynamics=True
             )
 
@@ -311,7 +312,8 @@ def rollout(pf_model, trajectories, start_time=0, max_timesteps=300,
     particles = np.zeros((N, M, state_dim))
     if true_initial:
         for i in range(N):
-            particles[i, :] = trajectories[i][0, 0]
+            particles[i, :] = trajectories[i][0][0]
+        particles += np.random.normal(0, 0.1, size=particles.shape)
     else:
         # Distribute initial particles randomly
         particles += np.random.normal(0, 1.0, size=particles.shape)
@@ -324,7 +326,7 @@ def rollout(pf_model, trajectories, start_time=0, max_timesteps=300,
     particles = utils.to_torch(particles, device=device)
     log_weights = torch.ones((N, M), device=device) * (-np.log(M))
 
-    for t in tqdm_notebook(range(start_time + 1, end_time)):
+    for t in tqdm(range(start_time + 1, end_time)):
         s = []
         o = {}
         c = []
