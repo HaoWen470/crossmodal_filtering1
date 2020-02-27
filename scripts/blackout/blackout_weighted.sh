@@ -24,13 +24,13 @@ else
 
 	python train_fusion.py --data_size 1000 --batch 128 --epochs 5 --fusion_type weighted \
 	--experiment_name $name --pretrain 5 --blackout $ratio \
-	--train fusion  --lr 1e-5\
+	--train fusion  --lr 1e-5 \
 	--init_state_noise 0.3 
 
 
 	python train_fusion.py --data_size 1000 --batch 128 --epochs 5 --fusion_type weighted \
 	--experiment_name $name --pretrain 5 --blackout $ratio \
-	--train fusion  --lr 1e-5\
+	--train fusion  --lr 1e-5 \
 	--init_state_noise 0.4 
 
 fi 
