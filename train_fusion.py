@@ -21,7 +21,7 @@ if __name__ == '__main__':
         default="fusion",
     )
     parser.add_argument("--data_size", type=int, default=100, choices=[10, 100, 1000])
-    parser.add_argument("--batch", type=int, default=64)
+    parser.add_argument("--batch", type=int, default=128)
     parser.add_argument("--pretrain", type=int, default=5)
     parser.add_argument("--epochs", type=int, default=10)
     parser.add_argument("--fusion_type", type=str, choices=["weighted", "poe", "sigma"], default="weighted")
@@ -32,8 +32,8 @@ if __name__ == '__main__':
     parser.add_argument("--mass", action="store_true")
     parser.add_argument("--omnipush", action="store_true")
     parser.add_argument("--lr", type=float, default=1e-4)
-    parser.add_argument("--hidden_units", type=int, default=128)
-    parser.add_argument("--one_loss", action="store_true")
+    parser.add_argument("--hidden_units", type=int, default=64)
+    parser.add_argument("--many_loss", action="store_true")
     parser.add_argument("--init_state_noise", type=float, default=0.2)
 
     args = parser.parse_args()
@@ -53,7 +53,8 @@ if __name__ == '__main__':
         'start training from': args.train,
         'epochs': args.epochs,
         'loading checkpoint': args.load_checkpoint,
-        'init state noise': args.init_state_noise
+        'init state noise': args.init_state_noise,
+        'many loss': args.many_loss,
     }
     # image_modality_model
     image_measurement = PandaEKFMeasurementModel(missing_modalities=['gripper_sensors'], units=args.hidden_units)
@@ -225,6 +226,7 @@ if __name__ == '__main__':
             training.train_e2e(buddy, image_model, e2e_trainset_loader, optim_name="im_ekf")
 
         buddy.save_checkpoint("phase_3_e2e")
+        buddy.save_checkpoint()
 
     buddy.set_learning_rate(args.lr, optimizer_name="fusion")
     # train fusion
@@ -232,7 +234,7 @@ if __name__ == '__main__':
         print("Training fusion epoch", i)
         obs_only=False
         training.train_fusion(buddy, fusion_model, e2e_trainset_loader,
-                              optim_name="fusion", obs_only=obs_only, one_loss=args.one_loss,
+                              optim_name="fusion", obs_only=obs_only, one_loss= not args.many_loss,
                               init_state_noise=args.init_state_noise)
         gc.collect()
     buddy.save_checkpoint()
