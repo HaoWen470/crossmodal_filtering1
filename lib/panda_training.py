@@ -284,7 +284,7 @@ def train_e2e(buddy, pf_model, dataloader, log_interval=2,
 
         if buddy.optimizer_steps % log_interval == 0:
             with buddy.log_scope(optim_name):
-                buddy.log("Training loss", loss)
+                buddy.log("Training loss", np.mean(utils.to_numpy(losses)))
                 buddy.log("Log weights mean", log_weights.mean())
                 buddy.log("Log weights std", log_weights.std())
                 buddy.log("Particle states mean", particles.mean())
@@ -391,8 +391,8 @@ def eval_rollout(predicted_states, actual_states, plot=False):
                          c=color(i),
                          **actual_label_arg)
 
-            rmse = np.mean(
-                (predicted_states[:, :, j] - actual_states[:, :, j]) ** 2)
+            rmse = np.sqrt(np.mean(
+                (predicted_states[:, :, j] - actual_states[:, :, j]) ** 2))
 
             plt.title(f"State #{j} // RMSE = {rmse}")
             plt.xlabel("Timesteps")
