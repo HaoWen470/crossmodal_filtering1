@@ -30,6 +30,9 @@ if __name__ == '__main__':
     parser.add_argument("--blackout", type=float, default=0.0)
     parser.add_argument("--mass", action="store_true")
     parser.add_argument("--omnipush", action="store_true")
+    parser.add_argument("--lr", type=float, default=1e-4)
+    parser.add_argument("--hidden_units", type=int, default=128)
+    parser.add_argument("--one_loss", action="store_true")
     args = parser.parse_args()
 
     experiment_name = args.experiment_name
@@ -42,12 +45,12 @@ if __name__ == '__main__':
         'use_mass': args.mass,
     }
     # image_modality_model
-    image_measurement = PandaEKFMeasurementModel(missing_modalities=['gripper_sensors'])
+    image_measurement = PandaEKFMeasurementModel(missing_modalities=['gripper_sensors'], units=args.hidden_units)
     image_dynamics = PandaDynamicsModel(use_particles=False)
     image_model = KalmanFilterNetwork(image_dynamics, image_measurement)
 
     # force_modality_model
-    force_measurement = PandaEKFMeasurementModel(missing_modalities=['image'])
+    force_measurement = PandaEKFMeasurementModel(missing_modalities=['image'], units=args.hidden_units)
     force_dynamics = PandaDynamicsModel(use_particles=False)
     force_model = KalmanFilterNetwork(force_dynamics, force_measurement)
 
@@ -78,8 +81,6 @@ if __name__ == '__main__':
     #     **dataset_args)
 
     if args.omnipush:
-
-
         e2e_trainset = omnipush_datasets.OmnipushParticleFilterDataset(
             "omnipush_data/ellip1_trainset.hdf5",
             "omnipush_data/ellip2_trainset.hdf5",
@@ -185,10 +186,10 @@ if __name__ == '__main__':
             print("Training measurement epoch", i)
             training.train_measurement(buddy, image_model, measurement_trainset_loader,
                                        log_interval=20, optim_name="im_meas",
-                                       checkpoint_interval= args.data_size*10)
+                                       checkpoint_interval= 10000)
             training.train_measurement(buddy, force_model, measurement_trainset_loader,
                                        log_interval=20, optim_name="force_meas",
-                                       checkpoint_interval= args.data_size*10)
+                                       checkpoint_interval= 10000)
             print()
 
         buddy.save_checkpoint("phase_2_measurement_pretrain")
@@ -196,11 +197,12 @@ if __name__ == '__main__':
 
     e2e_trainset_loader = torch.utils.data.DataLoader(e2e_trainset, batch_size=args.batch,
                                                       shuffle=True, num_workers=2)
+
     #train ekf (or all)
-    image_model.freeze_dynamics_model = True
-    force_model.freeze_dynamics_model = True
-    image_model.freeze_measurement_model = False
-    force_model.freeze_measurement_model = False
+    # image_model.freeze_dynamics_model = True
+    # force_model.freeze_dynamics_model = True
+    # image_model.freeze_measurement_model = False
+    # force_model.freeze_measurement_model = False
 
     if args.train == "all" or args.train == "ekf":
         for i in range(args.pretrain):
@@ -212,11 +214,12 @@ if __name__ == '__main__':
 
         buddy.save_checkpoint("phase_3_e2e")
 
+    buddy.set_learning_rate(args.lr, optimizer_name="fusion")
     # train fusion
     for i in range(args.epochs):
         print("Training fusion epoch", i)
         obs_only=False
         training.train_fusion(buddy, fusion_model, e2e_trainset_loader,
-                              optim_name="fusion", obs_only=obs_only)
+                              optim_name="fusion", obs_only=obs_only, one_loss=args.one_loss)
 
     buddy.save_checkpoint("phase_4_fusion")

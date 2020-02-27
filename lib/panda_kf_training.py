@@ -27,7 +27,7 @@ import fannypack
 from . import dpf
 
 def train_dynamics(buddy, kf_model, dataloader, log_interval=10,
-        optim_name="dynamics", checkpoint_interval=50, init_state_noise=0.5):
+        optim_name="dynamics", checkpoint_interval=10000, init_state_noise=0.5):
 
     for batch_idx, batch in enumerate(dataloader):
         prev_state, observation, control, new_state = fannypack.utils.to_device(batch, buddy._device)
@@ -43,7 +43,7 @@ def train_dynamics(buddy, kf_model, dataloader, log_interval=10,
 def train_dynamics_recurrent(
         buddy, kf_model, dataloader, log_interval=10,
         loss_type="l2",
-        optim_name="dynamics_recurr", checkpoint_interval=50, init_state_noise=0.5):
+        optim_name="dynamics_recurr", checkpoint_interval=10000, init_state_noise=0.5):
     epoch_losses = []
 
     assert loss_type in ('l1', 'l2')
@@ -145,7 +145,7 @@ def train_measurement(buddy, kf_model, dataloader, log_interval=10,
     print("Epoch loss:", np.mean(losses))
 
 def train_fusion(buddy, fusion_model, dataloader, log_interval=2,
-                 optim_name="fusion", obs_only=False, init_state_noise=0.2):
+                 optim_name="fusion", obs_only=False, init_state_noise=0.2, one_loss=False):
     for batch_idx, batch in enumerate(dataloader):
         # Transfer to GPU and pull out batch data
         batch_gpu = utils.to_device(batch, buddy._device)
@@ -193,28 +193,33 @@ def train_fusion(buddy, fusion_model, dataloader, log_interval=2,
             loss_force = torch.mean((force_state - batch_states[:, t, :]) ** 2)
             loss_fused = torch.mean((state - batch_states[:, t, :]) ** 2)
 
-            losses_force.append(loss_force)
-            losses_image.append(loss_image)
-            losses_fused.append(loss_fused)
-            losses_total.append(loss_image + loss_force +loss_fused)
+            losses_force.append(loss_force.item())
+            losses_image.append(loss_image.item())
+            losses_fused.append(loss_fused.item())
 
+            if one_loss: 
+                losses_total.append(loss_fused)
+            else: 
+                losses_total.append(loss_image + loss_force +loss_fused)
+
+        loss = torch.mean(torch.stack(losses_total))
         buddy.minimize(
-            torch.mean(torch.stack(losses_total)),
+            loss,
             optimizer_name= optim_name,
-            checkpoint_interval=50)
+            checkpoint_interval=10000)
 
         if buddy.optimizer_steps % log_interval == 0:
             with buddy.log_scope("fusion"):
-                buddy.log("Training loss",  torch.mean(torch.stack(losses_total)))
-                buddy.log("Image loss",  torch.mean(torch.stack(losses_image)))
-                buddy.log("Force loss",  torch.mean(torch.stack(losses_force)))
-                buddy.log("Fused loss",  torch.mean(torch.stack(losses_fused)))
+                buddy.log("Training loss",  loss.item())
+                buddy.log("Image loss",  np.mean(np.array(losses_image)))
+                buddy.log("Force loss",  np.mean(np.array(losses_force)))
+                buddy.log("Fused loss",  np.mean(np.array(losses_fused)))
 
 
 def train_e2e(buddy, ekf_model, dataloader,
               log_interval=2, optim_name="ekf",
               obs_only=False,
-              checkpoint_interval = 50,
+              checkpoint_interval = 10000,
               init_state_noise=0.2,
               ):
     # Train for 1 epoch
@@ -266,13 +271,13 @@ def train_e2e(buddy, ekf_model, dataloader,
 
         loss = torch.mean(torch.stack(losses))
         buddy.minimize(
-            torch.mean(torch.stack(losses)),
+            loss,
             optimizer_name= optim_name,
             checkpoint_interval=checkpoint_interval)
 
         if buddy.optimizer_steps % log_interval == 0:
             with buddy.log_scope(optim_name):
-                buddy.log("Training loss", loss)
+                buddy.log("Training loss", loss.item())
 
 def rollout_kf(kf_model, trajectories, start_time=0, max_timesteps=300,
                noisy_dynamics=True, true_initial=False):
