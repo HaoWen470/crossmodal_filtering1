@@ -71,13 +71,14 @@ class PandaDynamicsModel(dpf.DynamicsModel):
     default_state_noise_stddev = 0.02
 
     def __init__(self, state_dim=2, state_noise_stddev=None,
-                 units=32, use_particles=True):
+                 units=32, use_particles=True, identity_prediction_dims=()):
 
         super().__init__()
 
         control_dim = 7
         self.state_dim = state_dim
         self.use_particles = use_particles
+        self.identity_prediction_dims = set(identity_prediction_dims)
 
         if state_noise_stddev is not None:
             self.state_noise_stddev = state_noise_stddev
@@ -102,13 +103,17 @@ class PandaDynamicsModel(dpf.DynamicsModel):
             resblocks.Linear(units),
             resblocks.Linear(units),
             resblocks.Linear(units),
-            # We add 1 to state_dim to produce an extra "gate" term -- see
-            # implementation below
-            nn.Linear(units, state_dim + 1),
+            # We add 1 to our desired output dimension to produce an extra
+            # "gate" term -- see implementation below
+            #
+            # We also subtract len(identity_prediction_dims) to avoid
+            # regressing updates for dimensions like mass, friction, etc
+            nn.Linear(units, (state_dim - len(identity_prediction_dims)) + 1),
         )
 
         self.units = units
-        self.Q = torch.from_numpy(np.diag(np.array(self.state_noise_stddev))).float()
+        self.Q = torch.from_numpy(
+            np.diag(np.array(self.state_noise_stddev))).float()
 
     def forward(self, states_prev, controls, noisy=False):
         # states_prev:  (N, M, state_dim)
@@ -166,8 +171,14 @@ class PandaDynamicsModel(dpf.DynamicsModel):
             state_update_gate = torch.sigmoid(output_features[:, -1:])
         state_update = state_update_direction * state_update_gate
         assert state_update.shape == dimensions + (state_dim,)
+
         # Compute new states
-        states_new = states_prev + state_update
+        update_dims = tuple(slice(None) for _ in dimensions)
+        update_dims += (tuple(i for i in range(state_dim)
+                              if i not in self.identity_prediction_dims), )
+
+        states_new = states_prev.clone()
+        states_new[update_dims] += state_update
         assert states_new.shape == dimensions + (state_dim,)
 
         # Add noise if desired
