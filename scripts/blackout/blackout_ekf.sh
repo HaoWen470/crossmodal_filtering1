@@ -10,17 +10,16 @@ else
 	echo $name
 
 	python train_ekf.py --data_size 1000 --batch 128 --epochs 10 \
-	--experiment_name $name --pretrain 5 --blackout $ratio \
-	 --lr 1e-5 
+	--experiment_name $name --pretrain 5 --blackout $ratio 
 
  	python train_ekf.py --data_size 1000 --batch 128 --epochs 5 \
-	--experiment_name $name --pretrain 5 --blackout $ratio \
-	 --lr 1e-5 	--init_state_noise 0.3 
+	--experiment_name $name --pretrain 5 --blackout $ratio 
+		--init_state_noise 0.3 
 
 
 	python train_ekf.py --data_size 1000 --batch 128 --epochs 5 \
 	--experiment_name $name --pretrain 5 --blackout $ratio \
-	 --lr 1e-5 	--init_state_noise 0.4 
+	 	--init_state_noise 0.4 
 
 fi 
 
