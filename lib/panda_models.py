@@ -79,6 +79,7 @@ class PandaDynamicsModel(dpf.DynamicsModel):
         self.state_dim = state_dim
         self.use_particles = use_particles
         self.identity_prediction_dims = set(identity_prediction_dims)
+        assert len(self.identity_prediction_dims) == 0, "not implemented!"
 
         if state_noise_stddev is not None:
             self.state_noise_stddev = state_noise_stddev
@@ -173,12 +174,16 @@ class PandaDynamicsModel(dpf.DynamicsModel):
         assert state_update.shape == dimensions + (state_dim,)
 
         # Compute new states
-        update_dims = tuple(slice(None) for _ in dimensions)
-        update_dims += (tuple(i for i in range(state_dim)
-                              if i not in self.identity_prediction_dims), )
 
-        states_new = states_prev.clone()
-        states_new[update_dims] += state_update
+        ## TODO: fix this? should be simple -- currently breaks Jacobians
+        # update_dims = tuple(slice(None) for _ in dimensions)
+        # update_dims += (tuple(i for i in range(state_dim)
+        #                       if i not in self.identity_prediction_dims), )
+        #
+        # states_new = states_prev.clone()
+        # states_new[update_dims] += state_update
+
+        states_new = states_prev + state_update
         assert states_new.shape == dimensions + (state_dim,)
 
         # Add noise if desired
