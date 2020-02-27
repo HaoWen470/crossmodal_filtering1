@@ -47,7 +47,7 @@ if __name__ == '__main__':
         'pretrain epochs': args.pretrain,
         'omnipush dataset': args.omnipush,
         'start training from': args.train,
-        'epochs': args.epoch,
+        'epochs': args.epochs,
         'init state noise': args.init_state_noise,
     }
     measurement = PandaEKFMeasurementModel(units=args.hidden_units)
