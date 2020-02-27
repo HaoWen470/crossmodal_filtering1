@@ -414,3 +414,122 @@ def eval_rollout(predicted_states, actual_states, plot=False):
 #     plt.legend()
 #     plt.show()
 #     print("Velocity MSE: ", np.mean((predicted_states[:,:,1] - actual_states[:,:,1])**2))
+
+
+def rollout_and_eval(pf_model, trajectories, start_time=0, max_timesteps=300,
+                     particle_count=100, noisy_dynamics=True, true_initial=False):
+    # To make things easier, we're going to cut all our trajectories to the
+    # same length :)
+    end_time = np.min([len(s) for s, _, _ in trajectories] +
+                      [start_time + max_timesteps])
+    actual_states = [states[start_time:end_time]
+                     for states, _, _ in trajectories]
+
+    state_dim = len(actual_states[0][0])
+    N = len(trajectories)
+    M = particle_count
+
+    device = next(pf_model.parameters()).device
+
+    particles = np.zeros((N, M, state_dim))
+    if true_initial:
+        for i in range(N):
+            particles[i, :] = trajectories[i][0][0]
+        particles += np.random.normal(0, 0.1, size=particles.shape)
+    else:
+        # Distribute initial particles randomly
+        particles += np.random.normal(0, 1.0, size=particles.shape)
+
+    # Populate the initial state estimate as just the estimate of our particles
+    # This is a little hacky
+    # (N, t, state_dim)
+    predicted_states = [[np.mean(particles[i], axis=0)]
+                        for i in range(len(trajectories))]
+
+    particles = utils.to_torch(particles, device=device)
+    log_weights = torch.ones((N, M), device=device) * (-np.log(M))
+
+    # (N, t, M, state_dim)
+    particles_history = []
+    # (N, t, M)
+    weights_history = []
+
+    for i in range(len(trajectory)):
+        particles_history.append([utils.to_numpy(particles[i])])
+        weights_history.append([utils.to_numpy(log_weights[i])])
+
+    for t in tqdm(range(start_time + 1, end_time)):
+        s = []
+        o = {}
+        c = []
+        for i, traj in enumerate(trajectories):
+            states, observations, controls = traj
+
+            s.append(predicted_states[i][t - start_time - 1])
+            o_t = utils.DictIterator(observations)[t]
+            utils.DictIterator(o).append(o_t)
+            c.append(controls[t])
+
+        s = np.array(s)
+        utils.DictIterator(o).convert_to_numpy()
+        c = np.array(c)
+        (s, o, c) = utils.to_torch((s, o, c), device=device)
+
+        state_estimates, new_particles, new_log_weights = pf_model.forward(
+            particles,
+            log_weights,
+            o,
+            c,
+            resample=True,
+            noisy_dynamics=noisy_dynamics
+        )
+
+        particles = new_particles
+        log_weights = new_log_weights
+
+        for i in range(len(trajectories)):
+            predicted_states[i].append(
+                utils.to_numpy(
+                    state_estimates[i]))
+
+            particles_history[i].append(utils.to_numpy(particles[i]))
+            weights_history[i].append(np.exp(utils.to_numpy(log_weights[i])))
+
+    predicted_states = np.array(predicted_states)
+    actual_states = np.array(actual_states)
+
+    ### Eval
+    timesteps = len(actual_states[0])
+
+    def color(i):
+        colors = ['b', 'g', 'r', 'c', 'm', 'y', 'k']
+        return colors[i % len(colors)]
+
+    state_dim = actual_states.shape[-1]
+    for j in range(state_dim):
+        plt.figure(figsize=(8, 6))
+        for i, (pred, actual, particles, weights) in enumerate(
+                zip(predicted_states, actual_states, particles_history, weights_history)):
+            predicted_label_arg = {}
+            actual_label_arg = {}
+            if i == 0:
+                predicted_label_arg['label'] = "Predicted"
+                actual_label_arg['label'] = "Ground Truth"
+            plt.plot(range(timesteps),
+                     pred[:, j],
+                     c=color(i),
+                     alpha=0.3,
+                     **predicted_label_arg)
+            plt.plot(range(timesteps),
+                     actual[:, j],
+                     c=color(i),
+                     **actual_label_arg)
+
+        rmse = np.sqrt(np.mean(
+            (predicted_states[:, :, j] - actual_states[:, :, j]) ** 2))
+
+        plt.title(f"State #{j} // RMSE = {rmse}")
+        plt.xlabel("Timesteps")
+        plt.ylabel("Value")
+        plt.legend()
+        plt.show()
