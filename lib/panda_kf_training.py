@@ -280,7 +280,7 @@ def train_e2e(buddy, ekf_model, dataloader,
                 buddy.log("Training loss", loss.item())
 
 def rollout_kf(kf_model, trajectories, start_time=0, max_timesteps=300,
-               noisy_dynamics=True, true_initial=False, initial_noise=0.1):
+               noisy_dynamics=True, true_initial=False, init_state_noise=0.1):
     # To make things easier, we're going to cut all our trajectories to the
     # same length :)
 
@@ -296,12 +296,12 @@ def rollout_kf(kf_model, trajectories, start_time=0, max_timesteps=300,
     device = next(kf_model.parameters()).device
 
     initial_states = np.zeros((N, state_dim))
-    initial_sigmas = np.ones((N, state_dim, state_dim)) * initial_noise
+    initial_sigmas = np.ones((N, state_dim, state_dim)) * init_state_noise
     initial_obs = {}
 
     if true_initial:
         for i in range(N):
-            initial_states[i] = trajectories[i][0][0] + np.random.normal(0.0, scale=initial_noise, size=initial_states[i].shape)
+            initial_states[i] = trajectories[i][0][0] + np.random.normal(0.0, scale=init_state_noise, size=initial_states[i].shape)
         (initial_states,
          initial_sigmas) = utils.to_torch((
                                            initial_states,
