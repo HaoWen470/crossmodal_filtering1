@@ -17,9 +17,9 @@ print(torch.__version__, np.__version__)
 # Parse args
 parser = argparse.ArgumentParser()
 parser.add_argument("--experiment_name", type=str, required=True)
-parser.add_argument("--blackout", type=float, default=0.0, required=True)
-parser.add_argument("--hidden_units", type=int, default=64)
+parser.add_argument("--blackout", type=float, default=0.0)
 parser.add_argument("--sequential_image", type=int, default=1)
+parser.add_argument("--hidden_units", type=int, default=64)
 args = parser.parse_args()
 
 # Some constants
