@@ -6,6 +6,7 @@ from fannypack import utils
 import h5py
 import tqdm
 import multiprocessing as mp
+import skimage.transform
 
 # Handle arguments/inputs
 parser = argparse.ArgumentParser()
@@ -84,10 +85,15 @@ def process_file(path_index):
 
             # Iterate over each timestep
             for timestep in range(timestep_count):
-                traj_file.add_timestep({
+                traj = {
                     key: h5file[key][traj_index, timestep]
                     for key in timestep_keys
-                })
+                }
+                traj['image'] = skimage.transform.resize(
+                    traj['image'], (32, 32, 3))
+                traj['coord'] = skimage.transform.resize(
+                    traj['coord'], (32, 32, 3))
+                traj_file.add_timestep(traj)
 
             # Write current trajectory
             with traj_file:
