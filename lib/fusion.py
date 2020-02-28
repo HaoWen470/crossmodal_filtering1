@@ -69,14 +69,24 @@ class KalmanFusionModel(nn.Module):
                 state = self.product_of_experts(states_pred, weights)
                 state_sigma = self.weighted_average(state_sigma_pred, weights_for_sigma)
             elif self.fusion_type == "sigma":
-                image_weight = torch.pinverse(image_state_sigma, 1e-8)
-                force_weight = torch.pinverse(force_state_sigma, 1e-8)
+                image_mat = image_state_sigma.clone()
+                image_mat[:,1,0] = 0
+                image_mat[:,0,1] = 0
+                image_weight = 1.0/(utility.diag_to_vector(image_mat) + 1e-9)
 
-                image_weight_normed = image_weight/(image_weight+force_weight)
-                force_weight_normed = force_weight/(image_weight+force_weight)
-                state = torch.bmm(image_weight_normed, image_state.unsqueeze(-1)) + torch.bmm(force_weight_normed, force_state.unsqueeze(-1))
-                state = state.squeeze(-1)
-                state_sigma = 1/(image_weight + force_weight)
+
+                force_mat = force_state_sigma.clone()
+                force_mat[:,1,0] = 0
+                force_mat[:,0,1] = 0
+                force_weight = 1.0/(utility.diag_to_vector(force_mat) + 1e-9)
+
+                weights = torch.stack([image_weight, force_weight])
+                state = self.weighted_average(states_pred, weights)
+
+                state_sigma = torch.pinverse(image_state_sigma + force_state_sigma, 1e-9)
+
+                # print("state: ", state[0])
+                # print("state_sigma: ", state_sigma[0])
 
             return state, state_sigma, force_state, image_state
 

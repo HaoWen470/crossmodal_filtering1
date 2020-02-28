@@ -101,4 +101,5 @@ class KalmanFilterNetwork(nn.Module):
         states_update = states_update.squeeze()
         states_sigma_update = torch.bmm(torch.eye(K_update.shape[-1]).repeat(N, 1, 1).to(K_update.device) - K_update, states_sigma_pred)
 
+        states_sigma_update[:,0,1] = states_sigma_update[:,1, 0]
         return states_update, states_sigma_update
