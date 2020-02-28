@@ -25,6 +25,8 @@ class KalmanFusionModel(nn.Module):
 
     def forward(self, states_prev, state_sigma_prev, observations, controls, obs_only=False):
 
+            N, state_dim = states_prev.shape 
+
             assert state_sigma_prev is not None
             image_state, image_state_sigma = self.image_model.forward(
                 states_prev,
@@ -46,13 +48,19 @@ class KalmanFusionModel(nn.Module):
 
             force_beta, image_beta = self.weight_model.forward(observations)
 
-            weights = torch.stack([image_beta, force_beta])
-            weights_for_sigma = [torch.diag_embed(image_beta, offset=0, dim1=-2, dim2=-1), torch.diag_embed(force_beta, offset=0, dim1=-2, dim2=-1)]
+            weights = torch.stack([image_beta[:,0:state_dim], force_beta[:, 0:state_dim]])
+            weights_for_sigma = [torch.diag_embed(image_beta[:, 0:state_dim], offset=0, dim1=-2, dim2=-1), 
+                                torch.diag_embed(force_beta[:, 0:state_dim], offset=0, dim1=-2, dim2=-1)]
+            #todo: this only works for state dim =2 
+            weights_for_sigma[0][:, 0, 1] = image_beta[:, -1]
+            weights_for_sigma[0][:, 1, 0] = image_beta[:, -1]
+
+            weights_for_sigma[1][:, 0, 1] = force_beta[:, -1]
+            weights_for_sigma[1][:, 1, 0] = force_beta[:, -1]
+
             weights_for_sigma = torch.stack(weights_for_sigma)
             states_pred = torch.stack([image_state, force_state])
             state_sigma_pred = torch.stack([image_state_sigma, force_state_sigma])
-
-            sigma_as_weights = 1.0/(utility.diag_to_vector(state_sigma_pred)+1e-9)
 
             if self.fusion_type == "weighted":
                 state = self.weighted_average(states_pred, weights)
@@ -61,10 +69,14 @@ class KalmanFusionModel(nn.Module):
                 state = self.product_of_experts(states_pred, weights)
                 state_sigma = self.weighted_average(state_sigma_pred, weights_for_sigma)
             elif self.fusion_type == "sigma":
-                state = self.weighted_average(states_pred, sigma_as_weights)
-                weighted_sigma = 1.0/(sigma_as_weights.sum(0))
-                state_sigma = torch.diag_embed(weighted_sigma, offset=0, dim1=-2, dim2=-1)
+                image_weight = torch.pinverse(image_state_sigma, 1e-8)
+                force_weight = torch.pinverse(force_state_sigma, 1e-8)
 
+                image_weight_normed = image_weight/(image_weight+force_weight)
+                force_weight_normed = force_weight/(image_weight+force_weight)
+                state = torch.bmm(image_weight_normed, image_state.unsqueeze(-1)) + torch.bmm(force_weight_normed, force_state.unsqueeze(-1))
+                state = state.squeeze(-1)
+                state_sigma = 1/(image_weight + force_weight)
 
             return state, state_sigma, force_state, image_state
 
@@ -163,9 +175,12 @@ class CrossModalWeights(nn.Module):
             self.fusion_layer = nn.Sequential(
                 nn.Linear(units, units),
                 nn.ReLU(inplace=True),
-                nn.Linear(units, self.state_dim),
+                nn.Linear(units, self.state_dim+1),
                 nn.Sigmoid(),
             )
+
+            #todo: the +1 only works for state dim =2
+            # it should be + (state_dim)(state_dim-1)/2 
 
         for m in self.modules():
             if isinstance(m, nn.Conv2d) or isinstance(m, nn.ConvTranspose2d):
@@ -209,8 +224,8 @@ class CrossModalWeights(nn.Module):
         else:
             assert shared_features.shape == (N, self.units * 3)
             force_prop_beta = self.force_prop_layer(
-                shared_features[:, :self.units])
+                shared_features[:, :self.units+1])
             image_beta = self.image_prop_layer(
-                shared_features[:, self.units:self.units * 2])
+                shared_features[:, self.units+1:(self.units+1) * 2])
 
         return image_beta, force_prop_beta
