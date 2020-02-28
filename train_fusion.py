@@ -251,7 +251,7 @@ if __name__ == '__main__':
     for i in range(args.epochs):
         print("Training fusion epoch", i)
         obs_only=False
-        if sequential_image != 1 :
+        if args.sequential_image != 1 :
             know_image_blackout= True
         else:
             know_image_blackout = False 
