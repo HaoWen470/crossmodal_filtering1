@@ -37,9 +37,9 @@ from . import dpf
 
 def load_trajectories(*paths, use_vision=True, vision_interval=10,
                       use_proprioception=True, use_haptics=True,
-                      use_mass= False, use_depth= False,
-                      image_blackout_ratio=0, 
-                      sequential_image_rate= 1,  
+                      use_mass=False, use_depth=False,
+                      image_blackout_ratio=0,
+                      sequential_image_rate=1,
                       **unused):
     """
     Loads a list of trajectories from a set of input paths, where each
@@ -54,7 +54,7 @@ def load_trajectories(*paths, use_vision=True, vision_interval=10,
     trajectories = []
 
     assert 1 > image_blackout_ratio >= 0
-    assert image_blackout_ratio == 0 or sequential_image_rate == 1 
+    assert image_blackout_ratio == 0 or sequential_image_rate == 1
 
     for path in paths:
         count = np.float('inf')
@@ -113,7 +113,7 @@ def load_trajectories(*paths, use_vision=True, vision_interval=10,
                         blackout_chance = np.random.uniform()
                         # if blackout chance > ratio, then fill image
                         # otherwise zero
-                        if i % sequential_image_rate == 0:
+                        if blackout_chance == 0 and i % sequential_image_rate == 0:
                             observations['image'][i] = trajectory['image'][index]
 
                         if blackout_chance > image_blackout_ratio:
