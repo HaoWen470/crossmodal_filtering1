@@ -9,7 +9,8 @@ from . import dpf
 
 
 def load_trajectories(*paths, use_vision=True, vision_interval=10,
-                      use_proprioception=True, use_haptics=True, **unused):
+                      use_proprioception=True, use_haptics=True, 
+                    sequential_image_rate= 1,  **unused):
     """
     Loads a list of trajectories from a set of input paths, where each
     trajectory is a tuple containing...
@@ -57,6 +58,23 @@ def load_trajectories(*paths, use_vision=True, vision_interval=10,
                     (timesteps, obs_sensors_dim))
                 observations['gripper_sensors'][:, :3] = trajectory['force']
                 observations['gripper_sensors'][:, 6] = trajectory['contact']
+                
+                #todo: add blackout/sequential
+                # observations['image'] = np.zeros_like(trajectory['image'])
+                # if use_vision:
+                #     for i in range(len(observations['image'])):
+                #         index = (i // vision_interval) * vision_interval
+                #         index = min(index, len(observations['image']))
+                #         blackout_chance = np.random.uniform()
+                #         # if blackout chance > ratio, then fill image
+                #         # otherwise zero
+                #         if i % sequential_image_rate == 0:
+                #             observations['image'][i] = trajectory['image'][index]
+
+                #         if blackout_chance > image_blackout_ratio:
+                #             observations['image'][i] = trajectory['image'][index]
+
+                # todo: why mean? 
                 observations['image'] = np.mean(trajectory['image'], axis=-1)
 
                 # Construct controls

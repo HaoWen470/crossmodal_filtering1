@@ -35,6 +35,7 @@ if __name__ == '__main__':
     parser.add_argument("--hidden_units", type=int, default=64)
     parser.add_argument("--many_loss", action="store_true")
     parser.add_argument("--init_state_noise", type=float, default=0.2)
+    parser.add_argument("--sequential_image", type=int, default=1)
 
     args = parser.parse_args()
 
@@ -55,6 +56,7 @@ if __name__ == '__main__':
         'loading checkpoint': args.load_checkpoint,
         'init state noise': args.init_state_noise,
         'many loss': args.many_loss,
+        'sequential_image_rate': args.sequential_image
     }
     # image_modality_model
     image_measurement = PandaEKFMeasurementModel(missing_modalities=['gripper_sensors'], units=args.hidden_units)
@@ -249,9 +251,13 @@ if __name__ == '__main__':
     for i in range(args.epochs):
         print("Training fusion epoch", i)
         obs_only=False
+        if sequential_image != 1 :
+            know_image_blackout= True
+        else:
+            know_image_blackout = False 
         training.train_fusion(buddy, fusion_model, e2e_trainset_loader,
                               optim_name="fusion", obs_only=obs_only, one_loss= not args.many_loss,
-                              init_state_noise=args.init_state_noise)
-        gc.collect()
+                              init_state_noise=args.init_state_noise,
+                              know_image_blackout=know_image_blackout)
     buddy.save_checkpoint()
     buddy.save_checkpoint("phase_4_fusion")

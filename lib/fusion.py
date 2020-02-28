@@ -23,7 +23,8 @@ class KalmanFusionModel(nn.Module):
 
         assert self.fusion_type in ["weighted", "poe", "sigma"]
 
-    def forward(self, states_prev, state_sigma_prev, observations, controls, obs_only=False):
+    def forward(self, states_prev, state_sigma_prev, observations, controls, 
+        obs_only=False, know_image_blackout=False):
 
             N, state_dim = states_prev.shape 
 
@@ -47,6 +48,9 @@ class KalmanFusionModel(nn.Module):
             )
 
             force_beta, image_beta = self.weight_model.forward(observations)
+            if know_image_blackout:
+                if torch.sum(observations['image']) == 0:
+                    image_beta = torch.zeros(image_beta.shape)
 
             weights = torch.stack([image_beta[:,0:state_dim], force_beta[:, 0:state_dim]])
             weights_for_sigma = [torch.diag_embed(image_beta[:, 0:state_dim], offset=0, dim1=-2, dim2=-1), 

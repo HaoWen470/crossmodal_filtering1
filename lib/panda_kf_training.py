@@ -145,7 +145,8 @@ def train_measurement(buddy, kf_model, dataloader, log_interval=10,
     print("Epoch loss:", np.mean(losses))
 
 def train_fusion(buddy, fusion_model, dataloader, log_interval=2,
-                 optim_name="fusion", obs_only=False, init_state_noise=0.2, one_loss=False):
+                 optim_name="fusion", obs_only=False, init_state_noise=0.2, 
+                 one_loss=True, know_image_blackout=False):
     for batch_idx, batch in enumerate(dataloader):
         # Transfer to GPU and pull out batch data
         batch_gpu = utils.to_device(batch, buddy._device)
@@ -187,6 +188,7 @@ def train_fusion(buddy, fusion_model, dataloader, log_interval=2,
                 prev_state_sigma,
                 utils.DictIterator(batch_obs)[:, t, :],
                 batch_controls[:, t, :],
+                know_image_blackout= know_image_blackout,
             )
 
             loss_image = torch.mean((image_state - batch_states[:, t, :]) ** 2)
