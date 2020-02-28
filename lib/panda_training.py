@@ -2,8 +2,8 @@ import torch
 import torch.nn.functional as F
 import numpy as np
 import matplotlib.pyplot as plt
-# from tqdm import tqdm_notebook as tqdm
-from tqdm import tqdm
+from tqdm import tqdm_notebook as tqdm
+# from tqdm import tqdm
 
 from fannypack import utils
 
@@ -435,7 +435,8 @@ def rollout_and_eval(pf_model, trajectories, start_time=0, max_timesteps=300,
     if true_initial:
         for i in range(N):
             particles[i, :] = trajectories[i][0][0]
-        particles += np.random.normal(0, 0.1, size=particles.shape)
+        particles += np.random.normal(0, 0.2, size=[N, 1, state_dim])
+        particles += np.random.normal(0, 0.05, size=particles.shape)
     else:
         # Distribute initial particles randomly
         particles += np.random.normal(0, 1.0, size=particles.shape)
@@ -454,7 +455,7 @@ def rollout_and_eval(pf_model, trajectories, start_time=0, max_timesteps=300,
     # (N, t, M)
     weights_history = []
 
-    for i in range(len(trajectory)):
+    for i in range(N):
         particles_history.append([utils.to_numpy(particles[i])])
         weights_history.append([utils.to_numpy(log_weights[i])])
 
@@ -518,12 +519,25 @@ def rollout_and_eval(pf_model, trajectories, start_time=0, max_timesteps=300,
             plt.plot(range(timesteps),
                      pred[:, j],
                      c=color(i),
-                     alpha=0.3,
+                     alpha=0.5,
                      **predicted_label_arg)
             plt.plot(range(timesteps),
                      actual[:, j],
                      c=color(i),
                      **actual_label_arg)
+
+            for t in range(0, timesteps, 20):
+                particle_ys = particles[t][:, j]
+                particle_xs = [t for _ in particle_ys]
+                plt.scatter(particle_xs, particle_ys, c=color(i), alpha=0.02)
+                # particle_alphas = weights[t]
+                # particle_alphas /= np.max(particle_alphas)
+                # particle_alphas *= 0.3
+                # particle_alphas += 0.05
+                #
+                # for px, py, pa in zip(
+                #         particle_xs, particle_ys, particle_alphas):
+                #     plt.scatter([px], [py], c=color(i), alpha=pa)
 
         rmse = np.sqrt(np.mean(
             (predicted_states[:, :, j] - actual_states[:, :, j]) ** 2))
