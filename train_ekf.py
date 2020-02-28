@@ -66,40 +66,40 @@ if __name__ == '__main__':
     #     **dataset_args)
 
     if args.omnipush:
-              e2e_trainset = omnipush_datasets.OmnipushParticleFilterDataset(
-            "omnipush_data/simpler/train0.hdf5",
-            "omnipush_data/simpler/train1.hdf5",
-            "omnipush_data/simpler/train2.hdf5",
-            "omnipush_data/simpler/train3.hdf5",
-            "omnipush_data/simpler/train4.hdf5",
-            "omnipush_data/simpler/train5.hdf5",
+        e2e_trainset = omnipush_datasets.OmnipushParticleFilterDataset(
+        "simpler/train0.hdf5",
+        "simpler/train1.hdf5",
+        "simpler/train2.hdf5",
+        "simpler/train3.hdf5",
+        "simpler/train4.hdf5",
+        "simpler/train5.hdf5",
 
 
-            subsequence_length=16,
-            particle_count=1,
-            particle_stddev=(.03, .03),
-            **dataset_args
+        subsequence_length=16,
+        particle_count=1,
+        particle_stddev=(.03, .03),
+        **dataset_args
         )
 
         dataset_measurement = omnipush_datasets.OmnipushMeasurementDataset(
-            "omnipush_data/simpler/train0.hdf5",
-            "omnipush_data/simpler/train1.hdf5",
-            "omnipush_data/simpler/train2.hdf5",
-            "omnipush_data/simpler/train3.hdf5",
-            "omnipush_data/simpler/train4.hdf5",
-            "omnipush_data/simpler/train5.hdf5",
+            "simpler/train0.hdf5",
+            "simpler/train1.hdf5",
+            "simpler/train2.hdf5",
+            "simpler/train3.hdf5",
+            "simpler/train4.hdf5",
+            "simpler/train5.hdf5",
             subsequence_length=16,
             stddev=(0.5, 0.5),
             samples_per_pair=20,
             **dataset_args)
 
         dynamics_recurrent_trainset = omnipush_datasets.OmnipushSubsequenceDataset(
-            "omnipush_data/simpler/train0.hdf5",
-            "omnipush_data/simpler/train1.hdf5",
-            "omnipush_data/simpler/train2.hdf5",
-            "omnipush_data/simpler/train3.hdf5",
-            "omnipush_data/simpler/train4.hdf5",
-            "omnipush_data/simpler/train5.hdf5",
+            "simpler/train0.hdf5",
+            "simpler/train1.hdf5",
+            "simpler/train2.hdf5",
+            "simpler/train3.hdf5",
+            "simpler/train4.hdf5",
+            "simpler/train5.hdf5",
 
 
             subsequence_length=32,
@@ -107,12 +107,12 @@ if __name__ == '__main__':
         )
 
         dataset_dynamics = omnipush_datasets.OmnipushDynamicsDataset(
-            "omnipush_data/simpler/train0.hdf5",
-            "omnipush_data/simpler/train1.hdf5",
-            "omnipush_data/simpler/train2.hdf5",
-            "omnipush_data/simpler/train3.hdf5",
-            "omnipush_data/simpler/train4.hdf5",
-            "omnipush_data/simpler/train5.hdf5",
+            "simpler/train0.hdf5",
+            "simpler/train1.hdf5",
+            "simpler/train2.hdf5",
+            "simpler/train3.hdf5",
+            "simpler/train4.hdf5",
+            "simpler/train5.hdf5",
 
             subsequence_length=16,
             **dataset_args)
