@@ -23,11 +23,11 @@ parser.add_argument(
     help="Path to write trajectories to.",
     required=True)
 
-parser.add_argument(
-    "--object",
-    type=str,
-    help="Desired object type.",
-    required=True)
+# parser.add_argument(
+#     "--object",
+#     type=str,
+#     help="Desired object type.",
+#     required=True)
 
 parser.add_argument('--no_image', action='store_true')
 
@@ -41,11 +41,15 @@ paths.sort()
 output_file = utils.TrajectoriesFile(args.output_path, read_only=False)
 assert len(output_file) == 0
 
+total_trajectories = 0
+
 for path in paths:
     input_file = utils.TrajectoriesFile(path)
     with input_file, output_file:
         for i, traj in enumerate(input_file):
-            if traj['object'][0].decode('utf-8') != args.object:
+            total_trajectories += 1
+            if traj['object'][0].decode(
+                    'utf-8') not in ('ellip1', 'ellip2', 'ellip3'):
                 continue
 
             N = len(traj['image'])
@@ -54,7 +58,9 @@ for path in paths:
             traj['coord'] = skimage.transform.resize(
                 traj['coord'], (N, 32, 32, 3))
 
-            print(f"Adding trajectory {i} from {path}")
+            print(f"Adding trajectory {i} from {path} ({traj['object'][0]})")
             print(f"Total output length: {len(output_file)}")
             output_file.resize(len(output_file) + 1)
             output_file[len(output_file) - 1] = traj
+
+print(f"Kept {len(output_file)}/{total_trajectories} trajectories")
