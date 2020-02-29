@@ -21,6 +21,8 @@ class KalmanFusionModel(nn.Module):
         self.weight_model = weight_model
         self.fusion_type = fusion_type
 
+        self.safety = False
+
         assert self.fusion_type in ["weighted", "poe", "sigma"]
 
     def forward(self, states_prev, state_sigma_prev, observations, controls, 
@@ -90,7 +92,12 @@ class KalmanFusionModel(nn.Module):
                 weights = torch.stack([image_weight, force_weight])
                 state = self.weighted_average(states_pred, weights)
 
-                state_sigma = torch.pinverse(image_state_sigma + force_state_sigma, 1e-9)
+                if self.safety:
+
+                    state_sigma = torch.pinverse(image_state_sigma + force_state_sigma
+                                             + torch.diag(torch.ones(state_dim)*1e-5).repeat(N, 1, 1).to(force_state.device), 1e-9)
+                else:
+                    state_sigma = torch.pinverse(image_state_sigma + force_state_sigma, 1e-9)
 
                 # print("state: ", state[0])
                 # print("state_sigma: ", state_sigma[0])

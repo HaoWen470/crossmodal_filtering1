@@ -1,7 +1,7 @@
 import torch
 import numpy as np
 import scipy.stats
-from tqdm import tqdm_notebook
+from tqdm.auto import tqdm
 
 from fannypack import utils
 
@@ -282,7 +282,7 @@ class PandaMeasurementDataset(torch.utils.data.Dataset):
         self.stddev = np.array(stddev)
         self.samples_per_pair = samples_per_pair
         self.dataset = []
-        for i, trajectory in enumerate(tqdm_notebook(trajectories)):
+        for i, trajectory in enumerate(tqdm(trajectories)):
             assert len(trajectory) == 3
             states, observations, controls = trajectory
 

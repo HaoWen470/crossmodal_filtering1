@@ -5,22 +5,7 @@ import matplotlib.pyplot as plt
 from IPython import get_ipython
 from lib import utility
 
-def in_ipynb():
-    try:
-        cfg = get_ipython().config
-        if cfg['IPKernelApp']['parent_appname'] == 'ipython-notebook':
-            return True
-        else:
-            return False
-    except NameError:
-        return False
-try:
-    if in_ipynb():
-        from tqdm import tqdm_notebook as tqdm
-    else:
-        from tqdm import tqdm
-except:
-    from tqdm import tqdm
+from tqdm.auto import tqdm
 
 from fannypack import utils
 import fannypack

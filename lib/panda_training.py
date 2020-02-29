@@ -2,8 +2,7 @@ import torch
 import torch.nn.functional as F
 import numpy as np
 import matplotlib.pyplot as plt
-from tqdm import tqdm_notebook as tqdm
-# from tqdm import tqdm
+from tqdm.auto import tqdm
 
 from fannypack import utils
 
