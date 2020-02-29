@@ -33,6 +33,7 @@ if __name__ == '__main__':
     parser.add_argument("--init_state_noise", type=float, default=0.2)
     parser.add_argument("--sequential_image", type=int, default=1)
     parser.add_argument("--start_timestep", type=int, default=0)
+    parser.add_argument("--load_checkpoint", type=str, default=None)
 
     args = parser.parse_args()
 
@@ -64,6 +65,9 @@ if __name__ == '__main__':
                                   optimizer_names=["ekf", "dynamics", "measurement"],
                                   load_checkpoint=True,
                                   )
+
+    if args.load_checkpoint is not None:
+        buddy.load_checkpoint(path = args.load_checkpoint)
     print("Creating dataset...")
     # dataset_full = panda_datasets.PandaParticleFilterDataset(
     #     'data/gentle_push_10.hdf5',

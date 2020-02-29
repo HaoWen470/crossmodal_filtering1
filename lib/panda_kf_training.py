@@ -221,7 +221,7 @@ def train_fusion(buddy, fusion_model, dataloader, log_interval=2,
 def train_e2e(buddy, ekf_model, dataloader,
               log_interval=2, optim_name="ekf",
               obs_only=False,
-              checkpoint_interval = 10000,
+              checkpoint_interval = 1000,
               init_state_noise=0.2,
               ):
     # Train for 1 epoch
