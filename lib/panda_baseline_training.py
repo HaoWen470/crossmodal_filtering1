@@ -114,7 +114,7 @@ def rollout_lstm(model, trajectories, max_timesteps=300):
     batched_controls = np.array(batched_controls)
 
     # Propagate through model
-    model.reset_hidden_states(utils.to_torch(actual_states[:, 0, :]))
+    # model.reset_hidden_states(utils.to_torch(actual_states[:, 0, :]))
     device = next(model.parameters()).device
     predicted_states = np.concatenate([
         actual_states[:, 0:1, :],
