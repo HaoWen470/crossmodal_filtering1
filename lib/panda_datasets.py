@@ -166,7 +166,7 @@ def load_trajectories(*paths, use_vision=True, vision_interval=10,
 
                 trajectories.append((
                     states[start_timestep:],
-                    observations[start_timestep:],
+                    utils.DictIterator(observations)[start_timestep:],
                     controls[start_timestep:]
                 ))
 
