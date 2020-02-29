@@ -282,7 +282,8 @@ def train_e2e(buddy, ekf_model, dataloader,
                 buddy.log("Training loss", loss.item())
 
 def rollout_kf(kf_model, trajectories, start_time=0, max_timesteps=300,
-               noisy_dynamics=True, true_initial=False, init_state_noise=0.1):
+               noisy_dynamics=True, true_initial=False, init_state_noise=0.1,
+               save_data_name=None):
     # To make things easier, we're going to cut all our trajectories to the
     # same length :)
 
@@ -376,7 +377,15 @@ def rollout_kf(kf_model, trajectories, start_time=0, max_timesteps=300,
 
     predicted_states = np.array(predicted_states)
     actual_states = np.array(actual_states)
-    print(predicted_states.shape)
+
+    if save_data_name is not None:
+        import h5py
+        file_name = "rollout" + save_data_name + ".h5"
+        f = h5py.File(filename, 'w')
+        f.create_dataset("predicted_states", data=predicted_states)
+        f.create_dataset("actual_states", data=actual_states)
+        f.close()
+        
     return predicted_states, actual_states
 
 def eval_rollout(predicted_states, actual_states, plot=False, plot_traj=None, start=0):
