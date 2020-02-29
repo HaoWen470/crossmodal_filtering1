@@ -12,7 +12,7 @@ else
 
 	python train_fusion.py --data_size 1000 --batch 128 --epochs 5 --fusion_type sigma \
 	--experiment_name $name --pretrain 5 --blackout $ratio \
-	 --lr 1e-5 --train fusion --load_checkpoint load
+	 --lr 1e-5 --train fusion --load_checkpoint $load
 
 	python train_fusion.py --data_size 1000 --batch 128 --epochs 5 --fusion_type sigma \
 	--experiment_name $name --pretrain 5 --blackout $ratio \
