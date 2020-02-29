@@ -6,7 +6,8 @@ import numpy as np
 from tqdm.auto import tqdm
 
 import fannypack
-from lib import dpf, panda_datasets, panda_baseline_models, panda_baseline_training
+from lib import dpf, panda_datasets, panda_baseline_models, \
+    panda_baseline_training, omnipush_datasets
 
 import argparse
 
