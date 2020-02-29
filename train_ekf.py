@@ -32,6 +32,7 @@ if __name__ == '__main__':
     parser.add_argument("--hidden_units", type=int, default=128)
     parser.add_argument("--init_state_noise", type=float, default=0.2)
     parser.add_argument("--sequential_image", type=int, default=1)
+    parser.add_argument("--start_timestep", type=int, default=0)
 
     args = parser.parse_args()
 
@@ -50,7 +51,8 @@ if __name__ == '__main__':
         'start training from': args.train,
         'epochs': args.epochs,
         'init state noise': args.init_state_noise,
-        'sequential_image_rate': args.sequential_image
+        'sequential_image_rate': args.sequential_image,
+        'start_timestep': args.start_timestep,
 
     }
     measurement = PandaEKFMeasurementModel(units=args.hidden_units)
