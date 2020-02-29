@@ -22,7 +22,7 @@ parser.add_argument("--sequential_image", type=int, default=1)
 parser.add_argument(
     "--dataset",
     type=str,
-    choices=["mujoco, omnipush"],
+    choices=["mujoco", "omnipush"],
     default="mujoco")
 parser.add_argument("--hidden_units", type=int, default=64)
 args = parser.parse_args()
