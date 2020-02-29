@@ -267,7 +267,8 @@ def train_e2e(buddy, ekf_model, dataloader,
                 buddy.log("Training loss", loss.item())
 
 def rollout_kf(kf_model, trajectories, start_time=0, max_timesteps=300,
-               noisy_dynamics=True, true_initial=False, init_state_noise=0.1):
+               noisy_dynamics=True, true_initial=False, init_state_noise=0.1,
+               save_data_name=None):
     # To make things easier, we're going to cut all our trajectories to the
     # same length :)
 
@@ -361,10 +362,18 @@ def rollout_kf(kf_model, trajectories, start_time=0, max_timesteps=300,
 
     predicted_states = np.array(predicted_states)
     actual_states = np.array(actual_states)
-    print(predicted_states.shape)
+
+    if save_data_name is not None:
+        import h5py
+        file_name = "rollout" + save_data_name + ".h5"
+        f = h5py.File(filename, 'w')
+        f.create_dataset("predicted_states", data=predicted_states)
+        f.create_dataset("actual_states", data=actual_states)
+        f.close()
+        
     return predicted_states, actual_states
 
-def eval_rollout(predicted_states, actual_states, plot=False):
+def eval_rollout(predicted_states, actual_states, plot=False, plot_traj=None, start=0):
 
     if plot:
         timesteps = len(actual_states[0])
@@ -378,27 +387,75 @@ def eval_rollout(predicted_states, actual_states, plot=False):
             plt.figure(figsize=(8, 6))
             for i, (pred, actual) in enumerate(
                     zip(predicted_states, actual_states)):
+
+                if plot_traj is not None and i not in plot_traj:
+                    continue
+
                 predicted_label_arg = {}
                 actual_label_arg = {}
                 if i == 0:
                     predicted_label_arg['label'] = "Predicted"
                     actual_label_arg['label'] = "Ground Truth"
-                plt.plot(range(timesteps),
-                         pred[:, j],
+                plt.plot(range(timesteps-start),
+                         pred[start:, j],
                          c=color(i),
                          alpha=0.3,
                          **predicted_label_arg)
-                plt.plot(range(timesteps),
-                         actual[:, j],
+                plt.plot(range(timesteps-start),
+                         actual[start:, j],
                          c=color(i),
                          **actual_label_arg)
 
             rmse = np.sqrt(np.mean(
-                (predicted_states[:, :, j] - actual_states[:, :, j]) ** 2))
+                (predicted_states[:, start:, j] - actual_states[:, start:, j]) ** 2))
 
             plt.title(f"State #{j} // RMSE = {rmse}")
             plt.xlabel("Timesteps")
             plt.ylabel("Value")
             plt.legend()
             plt.show()
+
+
+
+def eval_2d_rollout(predicted_states, actual_states, plot=False, plot_traj=None, start=0):
+
+    if plot:
+        timesteps = len(actual_states[0])
+
+        def color(i):
+            colors = ['b', 'g', 'r', 'c', 'm', 'y', 'k']
+            return colors[i % len(colors)]
+
+        state_dim = actual_states.shape[-1]
+        
+        plt.figure(figsize=(8, 6))
+        for i, (pred, actual) in enumerate(
+                zip(predicted_states, actual_states)):
+
+            if plot_traj is not None and i not in plot_traj:
+                continue
+
+            predicted_label_arg = {}
+            actual_label_arg = {}
+            if i == 0:
+                predicted_label_arg['label'] = "Predicted"
+                actual_label_arg['label'] = "Ground Truth"
+            plt.plot(pred[start:, 0],
+                     pred[start:, 1],
+                     c=color(i),
+                     alpha=0.3,
+                     **predicted_label_arg)
+            plt.plot(actual[start:, 0],
+                     actual[start:, 1],
+                     c=color(i),
+                     **actual_label_arg)
+
+            rmse = np.sqrt(np.mean(
+                (predicted_states[:, start:] - actual_states[:, start:]) ** 2))
+
+        plt.title(f"x vs. y // RMSE = {rmse}")
+        plt.xlabel("Timesteps")
+        plt.ylabel("Value")
+        plt.legend()
+        plt.show()
 
