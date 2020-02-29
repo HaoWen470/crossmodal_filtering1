@@ -90,7 +90,8 @@ class KalmanFusionModel(nn.Module):
                 weights = torch.stack([image_weight, force_weight])
                 state = self.weighted_average(states_pred, weights)
 
-                state_sigma = torch.pinverse(image_state_sigma + force_state_sigma, 1e-9)
+                state_sigma = torch.pinverse(image_state_sigma + force_state_sigma
+                                             + torch.diag(torch.ones(state_dim)*1e-5).repeat(N, 1, 1).to(force_state.device), 1e-9)
 
                 # print("state: ", state[0])
                 # print("state_sigma: ", state_sigma[0])
