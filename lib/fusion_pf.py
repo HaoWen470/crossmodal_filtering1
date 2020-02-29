@@ -64,14 +64,16 @@ class ParticleFusionModel(nn.Module):
             # force_log_beta[blackout_indices, :] = 0.
 
             mask_shape = (N, 1)
+            mask = torch.ones(mask_shape, device=device)
+            mask[blackout_indices] = 0
 
-            image_mask = torch.zeros(mask_shape, device=device)
-            image_mask[blackout_indices] = float('-inf')
-            image_log_beta = image_mask + image_log_beta
+            image_log_beta_new = torch.zeros(mask_shape, device=device)
+            image_log_beta_new[blackout_indices] = np.log(1e-9)
+            image_log_beta = image_log_beta_new + mask * image_log_beta
 
-            force_mask = torch.ones(mask_shape, device=device)
-            force_mask[blackout_indices] = 0
-            force_log_beta = force_mask * force_log_beta
+            force_log_beta_new = torch.zeros(mask_shape, device=device)
+            force_log_beta_new[blackout_indices] = np.log(1. - 1e-9)
+            force_log_beta = force_log_beta_new + force_mask * force_log_beta
 
         # Weight state estimates from each filter
         state_estimates = torch.exp(image_log_beta) * image_state_estimates \
