@@ -36,6 +36,7 @@ if __name__ == '__main__':
     parser.add_argument("--many_loss", action="store_true")
     parser.add_argument("--init_state_noise", type=float, default=0.2)
     parser.add_argument("--sequential_image", type=int, default=1)
+    parser.add_argument("--start_timestep", type=int, default=0)
 
     args = parser.parse_args()
 
@@ -56,7 +57,9 @@ if __name__ == '__main__':
         'loading checkpoint': args.load_checkpoint,
         'init state noise': args.init_state_noise,
         'many loss': args.many_loss,
-        'sequential_image_rate': args.sequential_image
+        'sequential_image_rate': args.sequential_image,
+        'start_timestep': args.start_timestep,
+
     }
     # image_modality_model
     image_measurement = PandaEKFMeasurementModel(missing_modalities=['gripper_sensors'], units=args.hidden_units)
