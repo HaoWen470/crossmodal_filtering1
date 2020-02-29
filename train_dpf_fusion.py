@@ -8,7 +8,8 @@ import torch.nn.functional as F
 import time
 
 import fannypack
-from lib import panda_models, panda_datasets, panda_training, fusion, fusion_pf
+from lib import dpf, panda_models, panda_datasets, panda_training, \
+    omnipush_datasets
 
 import argparse
 
