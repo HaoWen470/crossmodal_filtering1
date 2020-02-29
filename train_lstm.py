@@ -25,7 +25,11 @@ parser.add_argument("--start_timestep", type=int, default=0)
 args = parser.parse_args()
 
 # Number of epochs to train for each subsequence length
-EPOCHS_PER_PHASE = 5 * args.epochs_multiplier
+SUBSEQUENCE_LENGTH_PHASES = [2, 16]
+EPOCHS_PER_PHASE = [
+    5 * args.epochs_multiplier,
+    10 * args.epochs_multiplier,
+]
 
 # Configure experiment
 experiment_name = args.experiment_name
@@ -49,12 +53,14 @@ buddy = fannypack.utils.Buddy(
 buddy.add_metadata(dataset_args)
 
 # Create a dataset for each subsequence length we want to train with
+
+
 def load_dataset(subsequence_length):
     if args.dataset == "mujoco":
-        datasets[subsequence_length] = panda_datasets.PandaSubsequenceDataset(
+        dataset = panda_datasets.PandaSubsequenceDataset(
             "data/gentle_push_1000.hdf5",
             # "data/gentle_push_1000.hdf5",
-            subsequence_length=length,
+            subsequence_length=subsequence_length,
             **dataset_args
         )
     elif args.dataset == "omnipush":
@@ -66,21 +72,23 @@ def load_dataset(subsequence_length):
             "simpler/train4.hdf5",
             "simpler/train5.hdf5",
         )
-        datasets[subsequence_length] = omnipush_datasets.OmnipushSubsequenceDataset(
+        dataset = omnipush_datasets.OmnipushSubsequenceDataset(
             *omnipush_train_files,
-            subsequence_length=length,
+            subsequence_length=subsequence_length,
             **dataset_args
         )
+    return dataset
+
 
 # Train!
 buddy.log_scope_push("lstm_training")
-subsequence_lengths = [2, 4, 8, 16]
-for subsequence_length in subsequence_lengths:
+for epochs, subsequence_length in zip(
+        EPOCHS_PER_PHASE, SUBSEQUENCE_LENGTH_PHASES):
     dataset = load_dataset(subsequence_length)
     dataloader = torch.utils.data.DataLoader(
         dataset, batch_size=16, shuffle=True, num_workers=2, drop_last=True)
     buddy.log("subsequence_length", subsequence_length)
-    for _ in tqdm(range(EPOCHS_PER_PHASE)):
+    for _ in tqdm(range(epochs)):
         for batch_idx, batch in enumerate(tqdm(dataloader)):
             states, observations, controls = fannypack.utils.to_device(
                 batch, buddy.device)
