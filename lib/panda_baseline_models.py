@@ -8,15 +8,15 @@ from fannypack.nn import resblocks
 
 class PandaLSTMModel(nn.Module):
 
-    def __init__(self, batch_size, units=64):
+    def __init__(self, units=64):
 
         obs_pos_dim = 3
         obs_sensors_dim = 7
-        state_dim = 2
+        control_dim = 7
+        self.state_dim = 2
 
         super().__init__()
-        self.batch_size = batch_size
-        self.lstm_hidden_dim = state_dim
+        self.lstm_hidden_dim = 16
         self.lstm_num_layers = 2
         self.units = units
 
@@ -24,12 +24,24 @@ class PandaLSTMModel(nn.Module):
         self.image_rows = 32
         self.image_cols = 32
         self.observation_image_layers = nn.Sequential(
-            nn.Conv2d(in_channels=1, out_channels=32, kernel_size=5, padding=2),
+            nn.Conv2d(
+                in_channels=1,
+                out_channels=32,
+                kernel_size=5,
+                padding=2),
             nn.ReLU(inplace=True),
             resblocks.Conv2d(channels=32, kernel_size=3),
-            nn.Conv2d(in_channels=32, out_channels=16, kernel_size=3, padding=1),
+            nn.Conv2d(
+                in_channels=32,
+                out_channels=16,
+                kernel_size=3,
+                padding=1),
             nn.ReLU(inplace=True),
-            nn.Conv2d(in_channels=16, out_channels=8, kernel_size=3, padding=1),
+            nn.Conv2d(
+                in_channels=16,
+                out_channels=8,
+                kernel_size=3,
+                padding=1),
             nn.Flatten(),  # 32 * 32 * 8
             nn.Linear(8 * 32 * 32, units),
             nn.ReLU(inplace=True),
@@ -37,18 +49,28 @@ class PandaLSTMModel(nn.Module):
         )
         self.observation_pose_layers = nn.Sequential(
             nn.Linear(obs_pos_dim, units),
+            nn.ReLU(inplace=True),
             resblocks.Linear(units),
         )
         self.observation_sensors_layers = nn.Sequential(
             nn.Linear(obs_sensors_dim, units),
+            nn.ReLU(inplace=True),
+            resblocks.Linear(units),
+        )
+
+        # Control layers
+        self.control_layers = nn.Sequential(
+            nn.Linear(control_dim, units),
+            nn.ReLU(inplace=True),
             resblocks.Linear(units),
         )
 
         # Fusion layer
         self.fusion_layers = nn.Sequential(
-            nn.Linear(units * 3, units),
+            nn.Linear(units * 4, units),
             nn.ReLU(inplace=True),
-            resblocks.Linear(units)
+            resblocks.Linear(units),
+            resblocks.Linear(units),
         )
 
         # LSTM layers
@@ -59,60 +81,66 @@ class PandaLSTMModel(nn.Module):
             batch_first=True)
 
         # Define the output layer
-        self.output_layers = nn.Identity()
+        self.output_layers = nn.Sequential(
+            nn.Linear(self.lstm_hidden_dim, units),
+            nn.ReLU(inplace=True),
+            # resblocks.Linear(units),
+            nn.Linear(units, self.state_dim),
+        )
 
-    def reset_hidden_states(self, initial_states=None):
-        device = next(self.parameters()).device
-        shape = (self.lstm_num_layers, self.batch_size, self.lstm_hidden_dim)
-        self.hidden = (torch.zeros(shape, device=device),
-                       torch.zeros(shape, device=device))
+    # def reset_hidden_states(self, initial_states=None):
+    #     device = next(self.parameters()).device
+    #     shape = (self.lstm_num_layers, self.batch_size, self.lstm_hidden_dim)
+    #     self.hidden = (torch.zeros(shape, device=device),
+    #                    torch.zeros(shape, device=device))
+    #
+    #     if initial_states is not None:
+    #         assert initial_states.shape == (
+    #             self.batch_size, self.lstm_hidden_dim)
+    #
+    #         # Set hidden state (h0) of layer #1 to our initial states
+    #         self.hidden[0][1] = initial_states
 
-        if initial_states is not None:
-            assert initial_states.shape == (
-                self.batch_size, self.lstm_hidden_dim)
-
-            # Set hidden state (h0) of layer #1 to our initial states
-            self.hidden[0][1] = initial_states
-
-    def forward(self, observations):
+    def forward(self, observations, controls):
         # Observations: key->value
         # where shape of value is (batch, seq_len, *)
+        batch_size = observations['image'].shape[0]
         sequence_length = observations['image'].shape[1]
-        assert observations['image'].shape[0] == self.batch_size
+        assert observations['image'].shape[0] == batch_size
+        assert observations['gripper_pos'].shape[0] == batch_size
         assert observations['gripper_pos'].shape[1] == sequence_length
         assert observations['gripper_sensors'].shape[1] == sequence_length
 
         # Forward pass through observation encoders
+        reshaped_images = observations['image'].reshape(
+            batch_size * sequence_length, 1, self.image_rows, self.image_cols)
         image_features = self.observation_image_layers(
-            observations['image'][:, :, np.newaxis, :, :].reshape(
-                sequence_length * self.batch_size, -1, self.image_rows, self.image_cols)
-        ).reshape((self.batch_size, sequence_length, self.units))
+            reshaped_images
+        ).reshape((batch_size, sequence_length, self.units))
 
-        observation_features = torch.cat((
+        merged_features = torch.cat((
             image_features,
             self.observation_pose_layers(observations['gripper_pos']),
-            self.observation_sensors_layers(observations['gripper_sensors']),
+            self.observation_sensors_layers(
+                observations['gripper_sensors']),
+            self.control_layers(controls),
         ), dim=-1)
 
-        assert observation_features.shape == (
-            self.batch_size, sequence_length, self.units * 3)
+        assert merged_features.shape == (
+            batch_size, sequence_length, self.units * 4)
 
-        fused_features = self.fusion_layers(observation_features)
+        fused_features = self.fusion_layers(merged_features)
         assert fused_features.shape == (
-            self.batch_size, sequence_length, self.units)
+            batch_size, sequence_length, self.units)
 
         # Forward pass through LSTM layer
-        lstm_out, self.hidden = self.lstm(
-            fused_features,
-            self.hidden
-        )
+        lstm_out, _unused_hidden = self.lstm(fused_features)
         assert lstm_out.shape == (
-            self.batch_size, sequence_length, self.lstm_hidden_dim)
+            batch_size, sequence_length, self.lstm_hidden_dim)
 
-        # Only take the output from the final timestep
-        # Can pass on the entirety of lstm_out to the next layer if it is a
-        # seq2seq prediction
         predicted_states = self.output_layers(lstm_out)
+        assert predicted_states.shape == (
+            batch_size, sequence_length, self.state_dim)
         return predicted_states
 
 
@@ -193,7 +221,7 @@ class PandaBaselineModel(nn.Module):
         # (N, obs_dim)
         observation_features = torch.cat((
             self.observation_image_layers(
-                observations['image'][:, np.newaxis, :, :]),
+                observations['image'][:, np.newaxis, :, :]) * 0,
             self.observation_pose_layers(observations['gripper_pose']),
             self.observation_sensors_layers(
                 observations['gripper_sensors']),

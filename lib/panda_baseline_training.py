@@ -1,7 +1,7 @@
 import torch
 import numpy as np
 import matplotlib.pyplot as plt
-from tqdm import tqdm_notebook
+from tqdm.auto import tqdm
 
 from fannypack import utils
 
@@ -10,7 +10,7 @@ def train(buddy, model, dataloader, log_interval=10, state_noise_std=0.2):
     losses = []
 
     # Train for 1 epoch
-    for batch_idx, batch in enumerate(tqdm_notebook(dataloader)):
+    for batch_idx, batch in enumerate(tqdm(dataloader)):
         # Transfer to GPU and pull out batch data
         batch_gpu = utils.to_device(batch, buddy._device)
         prev_states, observations, controls, new_states = batch_gpu
@@ -98,24 +98,33 @@ def rollout_lstm(model, trajectories, max_timesteps=300):
     actual_states = np.zeros((trajectory_count, timesteps, state_dim))
 
     batched_observations = {}
+    batched_controls = []
 
     # Trajectories is a list of (states, observations, controls)
-    for i, (states, observations, _) in enumerate(trajectories):
-        states = states[:timesteps]
-        observations = utils.DictIterator(observations)[:timesteps]
+    for i, (states, observations, controls) in enumerate(trajectories):
 
+        observations = utils.DictIterator(observations)[1:timesteps]
         utils.DictIterator(batched_observations).append(observations)
+        batched_controls.append(controls[1:timesteps])
 
         assert states.shape == (timesteps, state_dim)
-        actual_states[i] = states
+        actual_states[i] = states[:timesteps]  # * 0 + 0.1
 
     utils.DictIterator(batched_observations).convert_to_numpy()
+    batched_controls = np.array(batched_controls)
 
     # Propagate through model
-    model.reset_hidden_states(utils.to_torch(actual_states[:, 0, :]))
+    # model.reset_hidden_states(utils.to_torch(actual_states[:, 0, :]))
     device = next(model.parameters()).device
-    predicted_states = utils.to_numpy(
-        model(utils.to_torch(batched_observations, device)))
+    predicted_states = np.concatenate([
+        actual_states[:, 0:1, :],
+        utils.to_numpy(
+            model(
+                utils.to_torch(batched_observations, device),
+                utils.to_torch(batched_controls, device),
+            )
+        ),
+    ], axis=1)
 
     # Reset model
     model.batch_size = orig_batch_size
