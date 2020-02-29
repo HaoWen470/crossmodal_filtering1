@@ -28,7 +28,7 @@ args = parser.parse_args()
 # Number of epochs to train for each subsequence length
 SUBSEQUENCE_LENGTH_PHASES = [2, 16]
 EPOCHS_PER_PHASE = [
-    5 * args.epochs_multiplier,
+    2 * args.epochs_multiplier,
     10 * args.epochs_multiplier,
 ]
 
