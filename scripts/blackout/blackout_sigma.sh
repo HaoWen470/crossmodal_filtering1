@@ -8,14 +8,11 @@ else
 	echo $ratio 
 	name="fusion_sigma_blackout_"$ratio"_1"
 	echo $name
+	load="checkpoints/fusion_poe_blackout_"$ratio"_1-phase_3_e2e.ckpt"
 
-	python train_fusion.py --data_size 1000 --batch 128 --epochs 1 --fusion_type sigma \
+	python train_fusion.py --data_size 1000 --batch 128 --epochs 5 --fusion_type sigma \
 	--experiment_name $name --pretrain 5 --blackout $ratio \
-	 --lr 1e-5 
-
-	python train_fusion.py --data_size 1000 --batch 128 --epochs 4 --fusion_type sigma \
-	--experiment_name $name --pretrain 5 --blackout $ratio \
-	--train fusion  --lr 1e-5 
+	 --lr 1e-5 --train fusion --load_checkpoint load
 
 	python train_fusion.py --data_size 1000 --batch 128 --epochs 5 --fusion_type sigma \
 	--experiment_name $name --pretrain 5 --blackout $ratio \
@@ -24,6 +21,10 @@ else
 	python train_fusion.py --data_size 1000 --batch 128 --epochs 5 --fusion_type sigma \
 	--experiment_name $name --pretrain 5 --blackout $ratio \
 	--train fusion  --lr 1e-5 
+
+	#python train_fusion.py --data_size 1000 --batch 128 --epochs 5 --fusion_type sigma \
+	#--experiment_name $name --pretrain 5 --blackout $ratio \
+	#--train fusion  --lr 1e-5
 
 
 	# python train_fusion.py --data_size 1000 --batch 128 --epochs 5 --fusion_type sigma \
