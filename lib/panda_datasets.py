@@ -268,7 +268,8 @@ class PandaMeasurementDataset(torch.utils.data.Dataset):
     # default_stddev = (0.015, 0.015, 1e-4, 1e-4, 1e-4, 1e-4)
     default_stddev = (1, 1)  # , 0.015, 0.015, 0.015, 0.015)
 
-    def __init__(self, *paths, stddev=None, samples_per_pair=20, **kwargs):
+    def __init__(self, *paths, stddev=None, samples_per_pair=20,
+                 ignore_black_images=False, **kwargs):
         """
         Args:
           *paths: paths to dataset hdf5 files
@@ -293,6 +294,10 @@ class PandaMeasurementDataset(torch.utils.data.Dataset):
                 # Pull out data & labels
                 state = states[t]
                 observation = utils.DictIterator(observations)[t]
+
+                if ignore_black_images and np.sum(
+                        np.abs(observation['image'])) < 1e-8:
+                    continue
 
                 self.dataset.append((state, observation))
 

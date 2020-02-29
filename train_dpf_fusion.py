@@ -99,6 +99,9 @@ if args.dataset == "mujoco":
     measurement_trainset = panda_datasets.PandaMeasurementDataset(
         "data/gentle_push_1000.hdf5",
         samples_per_pair=10,
+        # Don't pretrain measurement model on black images if we're
+        # rate-limiting images
+        ignore_black_images=(args.sequential_image != 1),
         **dataset_args
     )
     e2e_trainset = panda_datasets.PandaParticleFilterDataset(
@@ -266,6 +269,8 @@ for i in range(E2E_JOINT_EPOCHS):
         pf_fusion_model,
         e2e_trainset_loader,
         loss_type="mse",
-        optim_name=optim_name)
+        optim_name=optim_name,
+        # Be aware of image blackout if we're rate-limiting images
+        know_image_blackout=(args.sequential_image != 1))
 buddy.save_checkpoint("phase_4_e2e_joint_unfrozen")
 buddy.save_checkpoint()

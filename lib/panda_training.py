@@ -221,7 +221,7 @@ def train_measurement(buddy, pf_model, dataloader,
 
 
 def train_e2e(buddy, pf_model, dataloader, log_interval=2,
-              loss_type="mse", optim_name="e2e", resample=False):
+              loss_type="mse", optim_name="e2e", resample=False, know_image_blackout=False):
     # Train for 1 epoch
     for batch_idx, batch in enumerate(tqdm(dataloader)):
         # Transfer to GPU and pull out batch data
@@ -244,14 +244,25 @@ def train_e2e(buddy, pf_model, dataloader, log_interval=2,
             prev_particles = particles
             prev_log_weights = log_weights
 
-            state_estimates, new_particles, new_log_weights = pf_model.forward(
-                prev_particles,
-                prev_log_weights,
-                utils.DictIterator(batch_obs)[:, t - 1, :],
-                batch_controls[:, t, :],
-                resample=resample,
-                noisy_dynamics=True
-            )
+            if know_image_blackout:
+                state_estimates, new_particles, new_log_weights = pf_model.forward(
+                    prev_particles,
+                    prev_log_weights,
+                    utils.DictIterator(batch_obs)[:, t - 1, :],
+                    batch_controls[:, t, :],
+                    resample=resample,
+                    noisy_dynamics=True,
+                    know_image_blackout=True
+                )
+            else:
+                state_estimates, new_particles, new_log_weights = pf_model.forward(
+                    prev_particles,
+                    prev_log_weights,
+                    utils.DictIterator(batch_obs)[:, t - 1, :],
+                    batch_controls[:, t, :],
+                    resample=resample,
+                    noisy_dynamics=True,
+                )
 
             if loss_type == "gmm":
                 loss = dpf.gmm_loss(
