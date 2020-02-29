@@ -9,7 +9,7 @@ import time
 
 import fannypack
 from lib import dpf, panda_models, panda_datasets, panda_training, fusion, \
-    omnipush_datasets
+    fusion_pf, omnipush_datasets
 
 import argparse
 
