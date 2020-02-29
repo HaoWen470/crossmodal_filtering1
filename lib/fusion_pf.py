@@ -58,8 +58,20 @@ class ParticleFusionModel(nn.Module):
         if know_image_blackout:
             blackout_indices = torch.sum(torch.abs(
                 observations['image'].reshape((N, -1))), dim=1) < 1e-8
-            image_log_beta[blackout_indices, :] = float('-inf')
-            force_log_beta[blackout_indices, :] = 0.
+
+            ## Masking in-place breaks autograd
+            # image_log_beta[blackout_indices, :] = float('-inf')
+            # force_log_beta[blackout_indices, :] = 0.
+
+            mask_shape = (N, 1)
+
+            image_mask = torch.zeros(mask_shape, device=device)
+            image_mask[blackout_indices] = float('-inf')
+            image_log_beta = image_mask + image_log_beta
+
+            force_mask = torch.ones(mask_shape, device=device)
+            force_mask[blackout_indices] = 0
+            force_log_beta = force_mask * force_log_beta
 
         # Weight state estimates from each filter
         state_estimates = torch.exp(image_log_beta) * image_state_estimates \

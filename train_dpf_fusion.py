@@ -8,7 +8,8 @@ import torch.nn.functional as F
 import time
 
 import fannypack
-from lib import panda_models, panda_datasets, panda_training, fusion, fusion_pf
+from lib import dpf, panda_models, panda_datasets, panda_training, fusion, \
+    fusion_pf, omnipush_datasets
 
 import argparse
 
@@ -19,20 +20,27 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--experiment_name", type=str, required=True)
 parser.add_argument("--blackout", type=float, default=0.0)
 parser.add_argument("--sequential_image", type=int, default=1)
+parser.add_argument(
+    "--dataset",
+    type=str,
+    choices=["mujoco", "omnipush"],
+    default="mujoco")
 parser.add_argument("--hidden_units", type=int, default=64)
+parser.add_argument("--epochs_multiplier", type=int, default=1)
+parser.add_argument("--start_timestep", type=int, default=0)
 args = parser.parse_args()
 
 # Some constants
-# DYNAMICS_PRETRAIN_EPOCHS = 1
-# DYNAMICS_RECURRENT_PRETRAIN_EPOCHS = 1
-# MEASUREMENT_PRETRAIN_EPOCHS = 1
-# E2E_INDIVIDUAL_EPOCHS = 1
-# E2E_JOINT_EPOCHS = 1
-DYNAMICS_PRETRAIN_EPOCHS = 5
-DYNAMICS_RECURRENT_PRETRAIN_EPOCHS = 8
+DYNAMICS_PRETRAIN_EPOCHS = 1
+DYNAMICS_RECURRENT_PRETRAIN_EPOCHS = 1
 MEASUREMENT_PRETRAIN_EPOCHS = 1
-E2E_INDIVIDUAL_EPOCHS = 10
-E2E_JOINT_EPOCHS = 10
+E2E_INDIVIDUAL_EPOCHS = 1
+E2E_JOINT_EPOCHS = 1
+# DYNAMICS_PRETRAIN_EPOCHS = 5 * args.epochs_multiplier
+# DYNAMICS_RECURRENT_PRETRAIN_EPOCHS = 8 * args.epochs_multiplier
+# MEASUREMENT_PRETRAIN_EPOCHS = 1 * args.epochs_multiplier
+# E2E_INDIVIDUAL_EPOCHS = 10 * args.epochs_multiplier
+# E2E_JOINT_EPOCHS = 10 * args.epochs_multiplier
 
 # Configure experiment
 experiment_name = args.experiment_name
@@ -43,6 +51,7 @@ dataset_args = {
     'vision_interval': 2,
     'image_blackout_ratio': args.blackout,
     'sequential_image_rate': args.sequential_image,
+    'start_timestep': args.start_timestep,
 }
 
 # Create models & training buddy
@@ -81,27 +90,61 @@ buddy = fannypack.utils.Buddy(
 buddy.add_metadata(dataset_args)
 
 # Load datasets
-dynamics_trainset = panda_datasets.PandaDynamicsDataset(
-    "data/gentle_push_1000.hdf5",
-    **dataset_args
-)
-dynamics_recurrent_trainset = panda_datasets.PandaSubsequenceDataset(
-    "data/gentle_push_1000.hdf5",
-    subsequence_length=16,
-    **dataset_args
-)
-measurement_trainset = panda_datasets.PandaMeasurementDataset(
-    "data/gentle_push_1000.hdf5",
-    samples_per_pair=10,
-    **dataset_args
-)
-e2e_trainset = panda_datasets.PandaParticleFilterDataset(
-    "data/gentle_push_1000.hdf5",
-    subsequence_length=16,
-    particle_count=30,
-    particle_stddev=(.1, .1),
-    **dataset_args
-)
+if args.dataset == "mujoco":
+    dynamics_trainset = panda_datasets.PandaDynamicsDataset(
+        "data/gentle_push_10.hdf5",
+        **dataset_args
+    )
+    dynamics_recurrent_trainset = panda_datasets.PandaSubsequenceDataset(
+        "data/gentle_push_10.hdf5",
+        subsequence_length=16,
+        **dataset_args
+    )
+    measurement_trainset = panda_datasets.PandaMeasurementDataset(
+        "data/gentle_push_10.hdf5",
+        samples_per_pair=10,
+        # Don't pretrain measurement model on black images if we're
+        # rate-limiting images
+        ignore_black_images=(args.sequential_image != 1),
+        **dataset_args
+    )
+    e2e_trainset = panda_datasets.PandaParticleFilterDataset(
+        "data/gentle_push_10.hdf5",
+        subsequence_length=16,
+        particle_count=30,
+        particle_stddev=(.1, .1),
+        **dataset_args
+    )
+elif args.dataset == "omnipush":
+    omnipush_train_files = (
+        "simpler/train0.hdf5",
+        "simpler/train1.hdf5",
+        "simpler/train2.hdf5",
+        "simpler/train3.hdf5",
+        "simpler/train4.hdf5",
+        "simpler/train5.hdf5",
+    )
+    dynamics_trainset = omnipush_datasets.OmnipushDynamicsDataset(
+        *omnipush_train_files,
+        **dataset_args
+    )
+    dynamics_recurrent_trainset = omnipush_datasets.OmnipushSubsequenceDataset(
+        *omnipush_train_files,
+        subsequence_length=16,
+        **dataset_args
+    )
+    measurement_trainset = omnipush_datasets.OmnipushMeasurementDataset(
+        *omnipush_train_files,
+        samples_per_pair=10,
+        **dataset_args
+    )
+    e2e_trainset = omnipush_datasets.OmnipushParticleFilterDataset(
+        *omnipush_train_files,
+        subsequence_length=16,
+        particle_count=30,
+        particle_stddev=(.1, .1),
+        **dataset_args
+    )
 
 # Pre-train dynamics
 models = [
@@ -230,6 +273,8 @@ for i in range(E2E_JOINT_EPOCHS):
         pf_fusion_model,
         e2e_trainset_loader,
         loss_type="mse",
-        optim_name=optim_name)
+        optim_name=optim_name,
+        # Be aware of image blackout if we're rate-limiting images
+        know_image_blackout=(args.sequential_image != 1))
 buddy.save_checkpoint("phase_4_e2e_joint_unfrozen")
 buddy.save_checkpoint()

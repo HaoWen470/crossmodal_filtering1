@@ -40,6 +40,7 @@ def load_trajectories(*paths, use_vision=True, vision_interval=10,
                       use_mass=False, use_depth=False,
                       image_blackout_ratio=0,
                       sequential_image_rate=1,
+                      start_timestep=0,
                       **unused):
     """
     Loads a list of trajectories from a set of input paths, where each
@@ -163,7 +164,11 @@ def load_trajectories(*paths, use_vision=True, vision_interval=10,
                     [[0.03975769, 0.07004428, 0.03383452, 0.04635485,
                       0.07224426, 0.05950112, 0.40950698]], dtype=np.float32)
 
-                trajectories.append((states, observations, controls))
+                trajectories.append((
+                    states[start_timestep:],
+                    utils.DictIterator(observations)[start_timestep:],
+                    controls[start_timestep:]
+                ))
 
     ## Uncomment this line to generate the lines required to normalize data
     # _print_normalization(trajectories)
@@ -263,7 +268,8 @@ class PandaMeasurementDataset(torch.utils.data.Dataset):
     # default_stddev = (0.015, 0.015, 1e-4, 1e-4, 1e-4, 1e-4)
     default_stddev = (1, 1)  # , 0.015, 0.015, 0.015, 0.015)
 
-    def __init__(self, *paths, stddev=None, samples_per_pair=20, **kwargs):
+    def __init__(self, *paths, stddev=None, samples_per_pair=20,
+                 ignore_black_images=False, **kwargs):
         """
         Args:
           *paths: paths to dataset hdf5 files
@@ -288,6 +294,10 @@ class PandaMeasurementDataset(torch.utils.data.Dataset):
                 # Pull out data & labels
                 state = states[t]
                 observation = utils.DictIterator(observations)[t]
+
+                if ignore_black_images and np.sum(
+                        np.abs(observation['image'])) < 1e-8:
+                    continue
 
                 self.dataset.append((state, observation))
 
