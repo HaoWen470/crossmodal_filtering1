@@ -78,6 +78,9 @@ class KalmanFusionModel(nn.Module):
                 image_mat[:,0,1] = 0
                 image_weight = 1.0/(utility.diag_to_vector(image_mat) + 1e-9)
 
+                if know_image_blackout:
+                    if torch.sum(observations['image']) == 0:
+                        image_weight = torch.zeros(image_weight.shape)
 
                 force_mat = force_state_sigma.clone()
                 force_mat[:,1,0] = 0
