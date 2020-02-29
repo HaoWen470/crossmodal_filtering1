@@ -26,6 +26,7 @@ parser.add_argument(
     choices=["mujoco", "omnipush"],
     default="mujoco")
 parser.add_argument("--hidden_units", type=int, default=64)
+parser.add_argument("--epochs_multiplier", type=int, default=1)
 args = parser.parse_args()
 
 # Some constants
@@ -33,10 +34,10 @@ args = parser.parse_args()
 # DYNAMICS_RECURRENT_PRETRAIN_EPOCHS = 1
 # MEASUREMENT_PRETRAIN_EPOCHS = 1
 # E2E_EPOCHS = 1
-DYNAMICS_PRETRAIN_EPOCHS = 5
-DYNAMICS_RECURRENT_PRETRAIN_EPOCHS = 8
-MEASUREMENT_PRETRAIN_EPOCHS = 2
-E2E_EPOCHS = 10
+DYNAMICS_PRETRAIN_EPOCHS = 5 * args.epochs_multiplier
+DYNAMICS_RECURRENT_PRETRAIN_EPOCHS = 8 * args.epochs_multiplier
+MEASUREMENT_PRETRAIN_EPOCHS = 2 * args.epochs_multiplier
+E2E_EPOCHS = 10 * args.epochs_multiplier
 
 # Configure experiment
 experiment_name = args.experiment_name
