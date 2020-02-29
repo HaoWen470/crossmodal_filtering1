@@ -27,19 +27,20 @@ parser.add_argument(
     default="mujoco")
 parser.add_argument("--hidden_units", type=int, default=64)
 parser.add_argument("--epochs_multiplier", type=int, default=1)
+parser.add_argument("--start_timestep", type=int, default=0)
 args = parser.parse_args()
 
 # Some constants
-# DYNAMICS_PRETRAIN_EPOCHS = 1
-# DYNAMICS_RECURRENT_PRETRAIN_EPOCHS = 1
-# MEASUREMENT_PRETRAIN_EPOCHS = 1
-# E2E_INDIVIDUAL_EPOCHS = 1
-# E2E_JOINT_EPOCHS = 1
-DYNAMICS_PRETRAIN_EPOCHS = 5 * args.epochs_multiplier
-DYNAMICS_RECURRENT_PRETRAIN_EPOCHS = 8 * args.epochs_multiplier
-MEASUREMENT_PRETRAIN_EPOCHS = 1 * args.epochs_multiplier
-E2E_INDIVIDUAL_EPOCHS = 10 * args.epochs_multiplier
-E2E_JOINT_EPOCHS = 10 * args.epochs_multiplier
+DYNAMICS_PRETRAIN_EPOCHS = 1
+DYNAMICS_RECURRENT_PRETRAIN_EPOCHS = 1
+MEASUREMENT_PRETRAIN_EPOCHS = 1
+E2E_INDIVIDUAL_EPOCHS = 1
+E2E_JOINT_EPOCHS = 1
+# DYNAMICS_PRETRAIN_EPOCHS = 5 * args.epochs_multiplier
+# DYNAMICS_RECURRENT_PRETRAIN_EPOCHS = 8 * args.epochs_multiplier
+# MEASUREMENT_PRETRAIN_EPOCHS = 1 * args.epochs_multiplier
+# E2E_INDIVIDUAL_EPOCHS = 10 * args.epochs_multiplier
+# E2E_JOINT_EPOCHS = 10 * args.epochs_multiplier
 
 # Configure experiment
 experiment_name = args.experiment_name
@@ -50,6 +51,7 @@ dataset_args = {
     'vision_interval': 2,
     'image_blackout_ratio': args.blackout,
     'sequential_image_rate': args.sequential_image,
+    'start_timestep': args.start_timestep,
 }
 
 # Create models & training buddy
@@ -90,16 +92,16 @@ buddy.add_metadata(dataset_args)
 # Load datasets
 if args.dataset == "mujoco":
     dynamics_trainset = panda_datasets.PandaDynamicsDataset(
-        "data/gentle_push_1000.hdf5",
+        "data/gentle_push_10.hdf5",
         **dataset_args
     )
     dynamics_recurrent_trainset = panda_datasets.PandaSubsequenceDataset(
-        "data/gentle_push_1000.hdf5",
+        "data/gentle_push_10.hdf5",
         subsequence_length=16,
         **dataset_args
     )
     measurement_trainset = panda_datasets.PandaMeasurementDataset(
-        "data/gentle_push_1000.hdf5",
+        "data/gentle_push_10.hdf5",
         samples_per_pair=10,
         # Don't pretrain measurement model on black images if we're
         # rate-limiting images
@@ -107,7 +109,7 @@ if args.dataset == "mujoco":
         **dataset_args
     )
     e2e_trainset = panda_datasets.PandaParticleFilterDataset(
-        "data/gentle_push_1000.hdf5",
+        "data/gentle_push_10.hdf5",
         subsequence_length=16,
         particle_count=30,
         particle_stddev=(.1, .1),

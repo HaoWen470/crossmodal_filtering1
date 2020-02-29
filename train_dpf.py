@@ -27,6 +27,7 @@ parser.add_argument(
     default="mujoco")
 parser.add_argument("--hidden_units", type=int, default=64)
 parser.add_argument("--epochs_multiplier", type=int, default=1)
+parser.add_argument("--start_timestep", type=int, default=0)
 args = parser.parse_args()
 
 # Some constants
@@ -48,6 +49,7 @@ dataset_args = {
     'vision_interval': 2,
     'image_blackout_ratio': args.blackout,
     'sequential_image_rate': args.sequential_image,
+    'start_timestep': args.start_timestep,
 }
 
 # Create models & training buddy
