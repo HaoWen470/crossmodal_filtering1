@@ -459,3 +459,136 @@ def eval_2d_rollout(predicted_states, actual_states, plot=False, plot_traj=None,
         plt.legend()
         plt.show()
 
+# def rollout_fusion(kf_model, trajectories, start_time=0, max_timesteps=300,
+#                noisy_dynamics=True, true_initial=False, init_state_noise=0.1):
+#     # To make things easier, we're going to cut all our trajectories to the
+#     # same length :)
+
+#     end_time = np.min([len(s) for s, _, _ in trajectories] +
+#                       [start_time + max_timesteps])
+#     actual_states = [states[start_time:end_time]
+#                      for states, _, _ in trajectories]
+
+#     state_dim = len(actual_states[0][0])
+#     N = len(trajectories)
+#     controls_dim = trajectories[0][2][0].shape
+
+#     device = next(kf_model.parameters()).device
+
+#     initial_states = np.zeros((N, state_dim))
+#     initial_sigmas = np.ones((N, state_dim, state_dim)) * init_state_noise
+#     initial_obs = {}
+
+#     if true_initial:
+#         for i in range(N):
+#             initial_states[i] = trajectories[i][0][0] + np.random.normal(0.0, scale=init_state_noise, size=initial_states[i].shape)
+#         (initial_states,
+#          initial_sigmas) = utils.to_torch((
+#                                            initial_states,
+#                                            initial_sigmas), device=device)
+#     else:
+#         # Put into measurement model!
+#         dummy_controls = torch.ones((N,)+controls_dim,).to(device)
+#         for i in range(N):
+#             utils.DictIterator(initial_obs).append(utils.DictIterator(trajectories[i][1])[0])
+
+#         utils.DictIterator(initial_obs).convert_to_numpy()
+
+#         (initial_obs,
+#          initial_states,
+#          initial_sigmas) = utils.to_torch((initial_obs,
+#                                            initial_states,
+#                                            initial_sigmas), device=device)
+
+#         states_tuple = kf_model.forward(
+#             initial_states,
+#             initial_sigmas,
+#             initial_obs,
+#             dummy_controls,
+#         )
+#         initial_states = states_tuple[0]
+#         initial_sigmas = states_tuple[1]
+#         predicted_states = [[utils.to_numpy(initial_states[i])]
+#                             for i in range(len(trajectories))]
+
+#     states = initial_states
+#     sigmas = initial_sigmas
+
+#     predicted_states = [[utils.to_numpy(initial_states[i])]
+#                         for i in range(len(trajectories))]
+#     predicted_force_states = [[utils.to_numpy(initial_states[i])]
+#                         for i in range(len(trajectories))]
+#     predicted_image_states = [[utils.to_numpy(initial_states[i])]
+#                     for i in range(len(trajectories))]
+
+#     predicted_sigmas = [[utils.to_numpy(initial_sigmas[i])]
+#                         for i in range(len(trajectories))]
+
+#     predicted_force_betas = [[np.zeros(initial_states[0].shape)]
+#                         for i in range(len(trajectories))]
+
+#     predicted_image_betas = [[np.zeros(initial_states[0].shape)]
+#                         for i in range(len(trajectories))]
+
+#     for t in range(start_time + 1, end_time):
+#         s = []
+#         o = {}
+#         c = []
+
+#         for i, traj in enumerate(trajectories):
+#             s, observations, controls = traj
+
+#             o_t = utils.DictIterator(observations)[t]
+#             utils.DictIterator(o).append(o_t)
+#             c.append(controls[t])
+
+#         s = np.array(s)
+#         utils.DictIterator(o).convert_to_numpy()
+#         c = np.array(c)
+#         (s, o, c) = utils.to_torch((s, o, c), device=device)
+
+#         estimates = kf_model.forward(
+#             states,
+#             sigmas,
+#             o,
+#             c,
+#             return_all = True
+#         )
+
+#         state_estimates = estimates[0]
+#         sigma_estimates = estimates[1]
+#         force_state = estimates[2]
+#         image_state = estimates[3]
+#         force_beta = estimates[4]
+#         image_beta = estimates[5]
+
+
+#         states = state_estimates
+#         sigmas = sigma_estimates
+
+#         for i in range(len(trajectories)):
+#             predicted_states[i].append(
+#                 utils.to_numpy(
+#                     state_estimates[i]))
+#             predicted_sigmas[i].append(
+#                 utils.to_numpy(
+#                     sigma_estimates[i]))
+#             predicted_image_betas[i].append(
+#                 utils.to_numpy(image_beta[i]
+#                     ))
+#             predicted_force_betas[i].append(
+#                 utils.to_numpy(force_beta[i]
+#                     ))           
+#             predicted_force_states[i].append(
+#                 utils.to_numpy(force_state[i]
+#                     ))
+#             predicted_image_states[i].append(
+#                 utils.to_numpy(image_state[i]
+#                     ))
+#     predicted_states = np.array(predicted_states)
+#     actual_states = np.array(actual_states)
+#     print(predicted_states.shape)
+#     return predicted_states, actual_states, 
+#     (predicted_sigmas, predicted_force_states, predicted_image_states, predicted_force_betas, predicted_image_betas)
+
+
