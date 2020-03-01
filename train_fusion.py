@@ -37,6 +37,7 @@ if __name__ == '__main__':
     parser.add_argument("--init_state_noise", type=float, default=0.2)
     parser.add_argument("--sequential_image", type=int, default=1)
     parser.add_argument("--start_timestep", type=int, default=0)
+    parser.add_argument("--old_weighting", action="store_true")
 
     args = parser.parse_args()
 
@@ -73,7 +74,8 @@ if __name__ == '__main__':
 
     #weight model and fusion model
     weight_model = CrossModalWeights()
-    fusion_model = KalmanFusionModel(image_model, force_model, weight_model, fusion_type=args.fusion_type)
+    fusion_model = KalmanFusionModel(image_model, force_model, weight_model,
+                                     fusion_type=args.fusion_type, old_weighting=args.old_weighting)
 
     buddy = fannypack.utils.Buddy(experiment_name,
                                   fusion_model,
