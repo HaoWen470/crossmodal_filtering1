@@ -272,6 +272,7 @@ def rollout_kf(kf_model, trajectories, start_time=0, max_timesteps=300,
     # To make things easier, we're going to cut all our trajectories to the
     # same length :)
 
+    kf_model.eval()
     end_time = np.min([len(s) for s, _, _ in trajectories] +
                       [start_time + max_timesteps])
     actual_states = [states[start_time:end_time]
@@ -324,8 +325,10 @@ def rollout_kf(kf_model, trajectories, start_time=0, max_timesteps=300,
 
     predicted_states = [[utils.to_numpy(initial_states[i])]
                         for i in range(len(trajectories))]
+    predicted_sigmas = [[utils.to_numpy(initial_sigmas[i])]
+                        for i in range(len(trajectories))]
 
-    for t in range(start_time + 1, end_time):
+    for t in tqdm(range(start_time + 1, end_time)):
         s = []
         o = {}
         c = []
@@ -349,8 +352,8 @@ def rollout_kf(kf_model, trajectories, start_time=0, max_timesteps=300,
             c,
         )
 
-        state_estimates = estimates[0]
-        sigma_estimates = estimates[1]
+        state_estimates = estimates[0].data
+        sigma_estimates = estimates[1].data
 
         states = state_estimates
         sigmas = sigma_estimates
@@ -359,17 +362,28 @@ def rollout_kf(kf_model, trajectories, start_time=0, max_timesteps=300,
             predicted_states[i].append(
                 utils.to_numpy(
                     state_estimates[i]))
+            predicted_sigmas[i].append(
+                utils.to_numpy(
+                    sigma_estimates[i]))
 
     predicted_states = np.array(predicted_states)
     actual_states = np.array(actual_states)
+    predicted_sigmas = np.array(predicted_sigmas)
 
     if save_data_name is not None:
         import h5py
         filename = "rollout/" + save_data_name + ".h5"
         
-        f = h5py.File(filename, 'w-')
+        try:
+            f = h5py.File(filename, 'w')
+        except:
+            import os
+            new_dest = "rollout/old/{}.h5".format(save_data_name)
+            os.rename(filename, new_dest)
+            f = h5py.File(filename, 'w')        
         f.create_dataset("predicted_states", data=predicted_states)
         f.create_dataset("actual_states", data=actual_states)
+        f.create_dataset("predicted_sigmas", data=predicted_sigmas)
         f.close()
         
     return predicted_states, actual_states
@@ -415,6 +429,9 @@ def eval_rollout(predicted_states, actual_states, plot=False, plot_traj=None, st
             plt.ylabel("Value")
             plt.legend()
             plt.show()
+
+            print(f"State #{j} // RMSE = {rmse}")
+            print(rsme)
 
 
 
@@ -470,7 +487,9 @@ def rollout_fusion(kf_model, trajectories, start_time=0, max_timesteps=300,
                       [start_time + max_timesteps])
     actual_states = [states[start_time:end_time]
                      for states, _, _ in trajectories]
-
+  
+    contact_states = [action[start_time : end_time][:,-1]
+                 for states, obs, action in trajectories]
     state_dim = len(actual_states[0][0])
     N = len(trajectories)
     controls_dim = trajectories[0][2][0].shape
@@ -480,6 +499,8 @@ def rollout_fusion(kf_model, trajectories, start_time=0, max_timesteps=300,
     initial_states = np.zeros((N, state_dim))
     initial_sigmas = np.ones((N, state_dim, state_dim)) * init_state_noise
     initial_obs = {}
+    
+    kf_model.eval
 
     if true_initial:
         for i in range(N):
@@ -531,6 +552,9 @@ def rollout_fusion(kf_model, trajectories, start_time=0, max_timesteps=300,
 
     predicted_image_betas = [[np.zeros(initial_states[0].shape)]
                         for i in range(len(trajectories))]
+    
+    predicted_contacts = [[np.zeros(1)]
+                          for i in range(len(trajectories))]
 
     for t in tqdm(range(start_time + 1, end_time)):
         s = []
@@ -546,23 +570,24 @@ def rollout_fusion(kf_model, trajectories, start_time=0, max_timesteps=300,
 
         s = np.array(s)
         utils.DictIterator(o).convert_to_numpy()
+        
         c = np.array(c)
-        (s, o, c) = utils.to_torch((s, o, c), device=device)
+        (s, o_torch, c) = utils.to_torch((s, o, c), device=device)
 
         estimates = kf_model.forward(
             states,
             sigmas,
-            o,
+            o_torch,
             c,
             return_all = True
         )
 
-        state_estimates = estimates[0]
-        sigma_estimates = estimates[1]
-        force_state = estimates[2]
-        image_state = estimates[3]
-        force_beta = estimates[4]
-        image_beta = estimates[5]
+        state_estimates = estimates[0].data
+        sigma_estimates = estimates[1].data
+        force_state = estimates[2].data
+        image_state = estimates[3].data
+        force_beta = estimates[4].data
+        image_beta = estimates[5].data
 
 
         states = state_estimates
@@ -589,19 +614,29 @@ def rollout_fusion(kf_model, trajectories, start_time=0, max_timesteps=300,
                     ))
     predicted_states = np.array(predicted_states)
     actual_states = np.array(actual_states)
+    contact_states = np.array(contact_states)
     predicted_sigmas = np.array(predicted_sigmas)
     predicted_image_betas = np.array(predicted_image_betas)
     predicted_force_betas = np.array(predicted_force_betas)
     predicted_force_states = np.array(predicted_force_states)
     predicted_image_states = np.array(predicted_image_states)
+    
 
     if save_data_name is not None:
         import h5py
         filename = "rollout/" + save_data_name + ".h5"
         
-        f = h5py.File(filename, 'w-')
+        try:
+            f = h5py.File(filename, 'w')
+        except:
+            import os
+            new_dest = "rollout/old/{}.h5".format(save_data_name)
+            os.rename(filename, new_dest)
+            f = h5py.File(filename, 'w')
+
         f.create_dataset("predicted_states", data=predicted_states)
         f.create_dataset("actual_states", data=actual_states)
+        f.create_dataset("contact_states", data=contact_states)
 
         f.create_dataset("predicted_sigmas", data=predicted_sigmas)
         f.create_dataset("image_betas", data=predicted_image_betas)

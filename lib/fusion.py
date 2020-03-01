@@ -80,7 +80,10 @@ class KalmanFusionModel(nn.Module):
                     force_beta_new[blackout_indices] = 1. - 1e-9
                     force_beta = force_beta_new + mask * force_beta
 
-
+            if self.old_weighting:
+                assert force_beta.shape == state_prev.shape
+            else:
+                assert force_beta.shape[-1] == state_prev.shape[-1] + 1
             weights = torch.stack([image_beta[:,0:state_dim], force_beta[:, 0:state_dim]])
             weights_for_sigma = [torch.diag_embed(image_beta[:, 0:state_dim], offset=0, dim1=-2, dim2=-1), 
                                 torch.diag_embed(force_beta[:, 0:state_dim], offset=0, dim1=-2, dim2=-1)]
