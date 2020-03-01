@@ -532,7 +532,7 @@ def rollout_fusion(kf_model, trajectories, start_time=0, max_timesteps=300,
     predicted_image_betas = [[np.zeros(initial_states[0].shape)]
                         for i in range(len(trajectories))]
 
-    for t in range(start_time + 1, end_time):
+    for t in tqdm(range(start_time + 1, end_time)):
         s = []
         o = {}
         c = []

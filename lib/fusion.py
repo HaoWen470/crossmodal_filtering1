@@ -247,12 +247,12 @@ class CrossModalWeights(nn.Module):
 
         if self.use_softmax:
             assert shared_features.shape == (N, 2 * (self.state_dim+1))
-            log_softmax = F.log_softmax(
+            softmax = F.softmax(
                 shared_features.reshape((N, 2, self.state_dim+1)),
                 dim=1
             )
-            force_prop_beta = log_softmax[:, 0, :]
-            image_beta = log_softmax[:, 1, :]
+            force_prop_beta = softmax[:, 0, :]
+            image_beta = softmax[:, 1, :]
         else:
             assert shared_features.shape == (N, self.units * 3)
             force_prop_beta = self.force_prop_layer(
