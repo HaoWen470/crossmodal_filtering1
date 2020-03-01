@@ -72,8 +72,12 @@ if __name__ == '__main__':
     force_dynamics = PandaDynamicsModel(use_particles=False)
     force_model = KalmanFilterNetwork(force_dynamics, force_measurement)
 
+    if args.old_weighting:
+        weight_dim = 1
+    else:
+        weight_dim=0
     #weight model and fusion model
-    weight_model = CrossModalWeights()
+    weight_model = CrossModalWeights(state_dim=weight_dim)
     fusion_model = KalmanFusionModel(image_model, force_model, weight_model,
                                      fusion_type=args.fusion_type, old_weighting=args.old_weighting)
 
