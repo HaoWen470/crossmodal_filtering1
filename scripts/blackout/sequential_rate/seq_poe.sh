@@ -1,9 +1,9 @@
 #!/bin/bash
 
 
-name="fusion_poe_seq5_0"
+name="fusion_poe_seq5_1"
 echo $name
-load="checkpoints/fusion_poe_blackout_0.8_1-phase_3_e2e.ckpt"
+load="checkpoints/fusion_poe_seq5_0-phase_3_e2e.ckpt"
 
 
 # python train_fusion.py --data_size 1000 --batch 128 --epochs 1 --fusion_type poe \
