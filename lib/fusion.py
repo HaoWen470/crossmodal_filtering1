@@ -13,7 +13,7 @@ from lib import utility
 class KalmanFusionModel(nn.Module):
 
     def __init__(self, image_model, force_model,
-                 weight_model, fusion_type="weighted", old_weighting=False):
+                 weight_model, fusion_type="weighted", old_weighting=False,know_image_blackout=False):
         super().__init__()
 
         self.image_model = image_model
@@ -23,6 +23,7 @@ class KalmanFusionModel(nn.Module):
         self.old_weighting= old_weighting
 
         self.safety = False
+        self.know_image_blackout = know_image_blackout
 
         assert self.fusion_type in ["weighted", "poe", "sigma"]
 
@@ -53,9 +54,32 @@ class KalmanFusionModel(nn.Module):
             force_beta, image_beta = self.weight_model.forward(observations)
             # print(force_beta.shape)
             # print(image_beta.shape)
-            if know_image_blackout:
-                if torch.sum(observations['image']) == 0:
-                    image_beta = torch.zeros(image_beta.shape)
+            device = force_beta.device
+            if know_image_blackout or self.know_image_blackout:
+                blackout_indices = torch.sum(torch.abs(
+                    observations['image'].reshape((N, -1))), dim=1) < 1e-3
+
+
+                mask_shape = (N, 1)
+                mask = torch.ones(mask_shape, device=device)
+                mask[blackout_indices] = 0
+
+                image_beta_new = torch.zeros(mask_shape, device=device)
+                if self.fusion_type == "poe": 
+                    image_beta_new[blackout_indices] = 1- 1e-9
+                    image_beta = image_beta_new + mask * image_beta
+
+                    force_beta_new = torch.zeros(mask_shape, device=device)
+                    force_beta_new[blackout_indices] = 1e-9
+                    force_beta = force_beta_new + mask * force_beta
+                else: 
+                    image_beta_new[blackout_indices] = 1e-9
+                    image_beta = image_beta_new + mask * image_beta
+
+                    force_beta_new = torch.zeros(mask_shape, device=device)
+                    force_beta_new[blackout_indices] = 1. - 1e-9
+                    force_beta = force_beta_new + mask * force_beta
+
 
             weights = torch.stack([image_beta[:,0:state_dim], force_beta[:, 0:state_dim]])
             weights_for_sigma = [torch.diag_embed(image_beta[:, 0:state_dim], offset=0, dim1=-2, dim2=-1), 
@@ -132,13 +156,16 @@ class KalmanFusionModel(nn.Module):
 
 class CrossModalWeights(nn.Module):
 
-    def __init__(self, state_dim=2, units=32, use_softmax=True):
+    def __init__(self, state_dim=2, units=32, use_softmax=True, old_weighting=True):
         super().__init__()
 
         obs_pose_dim = 3
         obs_sensors_dim = 7
         self.state_dim = state_dim
         self.use_softmax = use_softmax
+
+        if old_weighting:
+            state_dim -= 1
 
         self.observation_image_layers = nn.Sequential(
             nn.Conv2d(

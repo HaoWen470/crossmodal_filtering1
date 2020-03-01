@@ -117,8 +117,9 @@ def load_trajectories(*paths, use_vision=True, vision_interval=10,
                         if image_blackout_ratio == 0 and i % sequential_image_rate == 0:
                             observations['image'][i] = trajectory['image'][index]
 
-                        if blackout_chance > image_blackout_ratio:
+                        if blackout_chance > image_blackout_ratio and sequential_image_rate == 1:
                             observations['image'][i] = trajectory['image'][index]
+                            
                 observations['depth'] = np.zeros_like(trajectory['depth'])
                 if use_depth:
                     for i in range(len(observations['depth'])):
