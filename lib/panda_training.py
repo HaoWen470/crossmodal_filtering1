@@ -446,7 +446,7 @@ def rollout_and_eval(pf_model, trajectories, start_time=0, max_timesteps=300,
         for i in range(N):
             particles[i, :] = trajectories[i][0][0]
         particles += np.random.normal(0, 0.2, size=[N, 1, state_dim])
-        particles += np.random.normal(0, 0.05, size=particles.shape)
+        particles += np.random.normal(0, 0.2, size=particles.shape)
     else:
         # Distribute initial particles randomly
         particles += np.random.normal(0, 1.0, size=particles.shape)
@@ -550,7 +550,8 @@ def rollout_and_eval(pf_model, trajectories, start_time=0, max_timesteps=300,
                 #     plt.scatter([px], [py], c=color(i), alpha=pa)
 
         rmse = np.sqrt(np.mean(
-            (predicted_states[:, :, j] - actual_states[:, :, j]) ** 2))
+            (predicted_states[:, 10:, j] - actual_states[:, 10:, j]) ** 2))
+        print(rmse)
 
         plt.title(f"State #{j} // RMSE = {rmse}")
         plt.xlabel("Timesteps")

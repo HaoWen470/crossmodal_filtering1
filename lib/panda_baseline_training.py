@@ -157,6 +157,7 @@ def eval_rollout(predicted_states, actual_states, plot=False):
 
             rmse = np.sqrt(np.mean(
                 (predicted_states[:, :, j] - actual_states[:, :, j]) ** 2))
+            print(rmse)
 
             plt.title(f"State #{j} // RMSE = {rmse}")
             plt.xlabel("Timesteps")
