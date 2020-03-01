@@ -1,0 +1,16 @@
+batch: 128
+epochs: 5
+hidden_units: 64
+image_blackout_ratio: 0.0
+init state noise: 0.2
+loading checkpoint: checkpoints/fusion_poe_1000_hu64_1loss-phase_3_e2e.ckpt
+many loss: false
+omnipush dataset: false
+pretrain epochs: 5
+sequential_image_rate: 1
+start training from: fusion
+use_haptics: true
+use_mass: false
+use_proprioception: true
+use_vision: true
+vision_interval: 2

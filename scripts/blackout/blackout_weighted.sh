@@ -6,12 +6,13 @@ then
 else
 	ratio=$1
 	echo $ratio 
-	name="fusion_weighted_blackout_"$ratio"_1"
+	name="fusion_weighted_blackout_"$ratio"_2"
 	echo $name
+	load="checkpoints/fusion_poe_blackout_"$ratio"_1-phase_3_e2e.ckpt"
 
 	python train_fusion.py --data_size 1000 --batch 128 --epochs 1 --fusion_type weighted \
 	--experiment_name $name --pretrain 5 --blackout $ratio \
-	 --lr 1e-5 
+	 --lr 1e-5 --load_checkpoint $load --module_type ekf
 
 	python train_fusion.py --data_size 1000 --batch 128 --epochs 4 --fusion_type weighted \
 	--experiment_name $name --pretrain 5 --blackout $ratio \

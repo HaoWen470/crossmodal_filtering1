@@ -20,10 +20,10 @@ if __name__ == '__main__':
         type=str,
         default="fusion",
     )
-    parser.add_argument("--data_size", type=int, default=100, choices=[10, 100, 1000])
+    parser.add_argument("--data_size", type=int, default=1000, choices=[10, 100, 1000])
     parser.add_argument("--batch", type=int, default=128)
     parser.add_argument("--pretrain", type=int, default=5)
-    parser.add_argument("--epochs", type=int, default=10)
+    parser.add_argument("--epochs", type=int, default=15)
     parser.add_argument("--fusion_type", type=str, choices=["weighted", "poe", "sigma"], default="weighted")
     parser.add_argument("--train", type=str, choices=[ "all", "fusion", "ekf"], default="all")
     parser.add_argument("--load_checkpoint", type=str, default=None)
@@ -31,7 +31,7 @@ if __name__ == '__main__':
     parser.add_argument("--blackout", type=float, default=0.0)
     parser.add_argument("--mass", action="store_true")
     parser.add_argument("--omnipush", action="store_true")
-    parser.add_argument("--lr", type=float, default=1e-4)
+    parser.add_argument("--lr", type=float, default=1e-5)
     parser.add_argument("--hidden_units", type=int, default=64)
     parser.add_argument("--many_loss", action="store_true")
     parser.add_argument("--init_state_noise", type=float, default=0.2)
@@ -72,8 +72,13 @@ if __name__ == '__main__':
     force_dynamics = PandaDynamicsModel(use_particles=False)
     force_model = KalmanFilterNetwork(force_dynamics, force_measurement)
 
+    if args.old_weighting:
+        weight_dim = 1
+    else:
+        weight_dim=2
     #weight model and fusion model
-    weight_model = CrossModalWeights()
+
+    weight_model = CrossModalWeights(state_dim=weight_dim)
     fusion_model = KalmanFusionModel(image_model, force_model, weight_model,
                                      fusion_type=args.fusion_type, old_weighting=args.old_weighting)
 

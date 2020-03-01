@@ -1,0 +1,16 @@
+batch: 128
+epochs: 5
+hidden_units: 64
+image_blackout_ratio: 0.0
+init state noise: 0.2
+loading checkpoint: null
+many loss: false
+omnipush dataset: false
+pretrain epochs: 5
+sequential_image_rate: 1
+start training from: fusion
+use_haptics: true
+use_mass: false
+use_proprioception: true
+use_vision: true
+vision_interval: 2
