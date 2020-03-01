@@ -16,7 +16,7 @@ class ParticleFusionModel(nn.Module):
         self.freeze_weight_model = False
 
     def forward(self, states_prev, log_weights_prev, observations, controls,
-                resample=True, noisy_dynamics=True, know_image_blackout=True):
+                resample=True, noisy_dynamics=True, know_image_blackout=False):
 
         N, M, state_dim = states_prev.shape
         assert log_weights_prev.shape == (N, M)
@@ -64,14 +64,16 @@ class ParticleFusionModel(nn.Module):
             # force_log_beta[blackout_indices, :] = 0.
 
             mask_shape = (N, 1)
+            mask = torch.ones(mask_shape, device=device)
+            mask[blackout_indices] = 0
 
-            image_mask = torch.zeros(mask_shape, device=device)
-            image_mask[blackout_indices] = float('-inf')
-            image_log_beta = image_mask + image_log_beta
+            image_log_beta_new = torch.zeros(mask_shape, device=device)
+            image_log_beta_new[blackout_indices] = np.log(1e-9)
+            image_log_beta = image_log_beta_new + mask * image_log_beta
 
-            force_mask = torch.ones(mask_shape, device=device)
-            force_mask[blackout_indices] = 0
-            force_log_beta = force_mask * force_log_beta
+            force_log_beta_new = torch.zeros(mask_shape, device=device)
+            force_log_beta_new[blackout_indices] = np.log(1. - 1e-9)
+            force_log_beta = force_log_beta_new + mask * force_log_beta
 
         # Weight state estimates from each filter
         state_estimates = torch.exp(image_log_beta) * image_state_estimates \

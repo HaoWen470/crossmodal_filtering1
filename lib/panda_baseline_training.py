@@ -89,10 +89,7 @@ def rollout(model, trajectories, max_timesteps=300):
 def rollout_lstm(model, trajectories, max_timesteps=300):
     timesteps = np.min([len(s) for s, _, _ in trajectories] + [max_timesteps])
 
-    orig_batch_size = model.batch_size
-
     trajectory_count = len(trajectories)
-    model.batch_size = trajectory_count
 
     state_dim = trajectories[0][0].shape[-1]
     actual_states = np.zeros((trajectory_count, timesteps, state_dim))
@@ -125,9 +122,6 @@ def rollout_lstm(model, trajectories, max_timesteps=300):
             )
         ),
     ], axis=1)
-
-    # Reset model
-    model.batch_size = orig_batch_size
 
     # Indexing: batch, sequence length, state
     return predicted_states, actual_states

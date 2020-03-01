@@ -8,7 +8,7 @@ from fannypack.nn import resblocks
 
 class PandaLSTMModel(nn.Module):
 
-    def __init__(self, units=64):
+    def __init__(self, units=32):
 
         obs_pos_dim = 3
         obs_sensors_dim = 7
@@ -16,7 +16,7 @@ class PandaLSTMModel(nn.Module):
         self.state_dim = 2
 
         super().__init__()
-        self.lstm_hidden_dim = 16
+        self.lstm_hidden_dim = 4
         self.lstm_num_layers = 2
         self.units = units
 
@@ -69,7 +69,6 @@ class PandaLSTMModel(nn.Module):
         self.fusion_layers = nn.Sequential(
             nn.Linear(units * 4, units),
             nn.ReLU(inplace=True),
-            resblocks.Linear(units),
             resblocks.Linear(units),
         )
 
