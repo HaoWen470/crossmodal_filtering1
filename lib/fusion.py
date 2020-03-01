@@ -13,13 +13,14 @@ from lib import utility
 class KalmanFusionModel(nn.Module):
 
     def __init__(self, image_model, force_model,
-                 weight_model, fusion_type="weighted"):
+                 weight_model, fusion_type="weighted", old_weighting=False):
         super().__init__()
 
         self.image_model = image_model
         self.force_model = force_model
         self.weight_model = weight_model
         self.fusion_type = fusion_type
+        self.old_weighting= old_weighting
 
         self.safety = False
 
@@ -57,12 +58,13 @@ class KalmanFusionModel(nn.Module):
             weights = torch.stack([image_beta[:,0:state_dim], force_beta[:, 0:state_dim]])
             weights_for_sigma = [torch.diag_embed(image_beta[:, 0:state_dim], offset=0, dim1=-2, dim2=-1), 
                                 torch.diag_embed(force_beta[:, 0:state_dim], offset=0, dim1=-2, dim2=-1)]
-            #todo: this only works for state dim =2 
-            weights_for_sigma[0][:, 0, 1] = image_beta[:, -1]
-            weights_for_sigma[0][:, 1, 0] = image_beta[:, -1]
+            #todo: this only works for state dim =2
+            if not self.old_weighting:
+                weights_for_sigma[0][:, 0, 1] = image_beta[:, -1]
+                weights_for_sigma[0][:, 1, 0] = image_beta[:, -1]
 
-            weights_for_sigma[1][:, 0, 1] = force_beta[:, -1]
-            weights_for_sigma[1][:, 1, 0] = force_beta[:, -1]
+                weights_for_sigma[1][:, 0, 1] = force_beta[:, -1]
+                weights_for_sigma[1][:, 1, 0] = force_beta[:, -1]
 
             weights_for_sigma = torch.stack(weights_for_sigma)
             states_pred = torch.stack([image_state, force_state])
