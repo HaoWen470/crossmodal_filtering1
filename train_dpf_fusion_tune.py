@@ -52,7 +52,7 @@ pf_force_model = panda_models.PandaParticleFilterNetwork(
     panda_models.PandaMeasurementModel(
         units=args.hidden_units, missing_modalities=['image']),
 )
-weight_model = fusion.CrossModalWeights(state_dim=1)
+weight_model = fusion.CrossModalWeights(state_dim=0)
 pf_fusion_model = fusion_pf.ParticleFusionModel(
     pf_image_model,
     pf_force_model,
