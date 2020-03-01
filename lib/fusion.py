@@ -51,8 +51,8 @@ class KalmanFusionModel(nn.Module):
             )
 
             force_beta, image_beta = self.weight_model.forward(observations)
-            print(force_beta.shape)
-            print(image_beta.shape)
+            # print(force_beta.shape)
+            # print(image_beta.shape)
             if know_image_blackout:
                 if torch.sum(observations['image']) == 0:
                     image_beta = torch.zeros(image_beta.shape)
@@ -76,8 +76,8 @@ class KalmanFusionModel(nn.Module):
                 state = self.weighted_average(states_pred, weights)
                 state_sigma = self.weighted_average(state_sigma_pred, weights_for_sigma)
             elif self.fusion_type == "poe":
-                print(weights.shape)
-                print(states_pred.shape)
+                # print(weights.shape)
+                # print(states_pred.shape)
                 state = self.product_of_experts(states_pred, weights)
                 state_sigma = self.weighted_average(state_sigma_pred, weights_for_sigma)
             elif self.fusion_type == "sigma":
@@ -173,6 +173,9 @@ class CrossModalWeights(nn.Module):
             resblocks.Linear(units, activation='leaky_relu'),
         )
 
+        # todo: the +1 only works for state dim =2
+        # it should be + (state_dim)(state_dim-1)/2
+
         if self.use_softmax:
             self.shared_layers = nn.Sequential(
                 nn.Linear(units * 3, units),
@@ -210,8 +213,6 @@ class CrossModalWeights(nn.Module):
             #     nn.Sigmoid(),
             # )
 
-            #todo: the +1 only works for state dim =2
-            # it should be + (state_dim)(state_dim-1)/2 
 
         for m in self.modules():
             if isinstance(m, nn.Conv2d) or isinstance(m, nn.ConvTranspose2d):
