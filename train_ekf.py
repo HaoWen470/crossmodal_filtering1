@@ -20,10 +20,10 @@ if __name__ == '__main__':
         type=str,
         default="ekf",
     )
-    parser.add_argument("--data_size", type=int, default=100, choices=[10, 100, 1000])
-    parser.add_argument("--batch", type=int, default=64)
+    parser.add_argument("--data_size", type=int, default=1000, choices=[10, 100, 1000])
+    parser.add_argument("--batch", type=int, default=128)
     parser.add_argument("--pretrain", type=int, default=5)
-    parser.add_argument("--epochs", type=int, default=10,)
+    parser.add_argument("--epochs", type=int, default=15,)
     parser.add_argument("--train", type=str, choices=[ "all", "ekf"], default="all")
     parser.add_argument("--obs_only", action="store_true")
     parser.add_argument("--blackout", type=float, default=0.0)
