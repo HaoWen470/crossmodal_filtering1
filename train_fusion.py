@@ -268,5 +268,5 @@ if __name__ == '__main__':
                               optim_name="fusion", obs_only=obs_only, one_loss= not args.many_loss,
                               init_state_noise=args.init_state_noise,
                               know_image_blackout=know_image_blackout)
-    buddy.save_checkpoint()
+        buddy.save_checkpoint()
     buddy.save_checkpoint("phase_4_fusion")
