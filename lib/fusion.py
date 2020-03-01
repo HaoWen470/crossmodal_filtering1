@@ -27,7 +27,7 @@ class KalmanFusionModel(nn.Module):
         assert self.fusion_type in ["weighted", "poe", "sigma"]
 
     def forward(self, states_prev, state_sigma_prev, observations, controls, 
-        obs_only=False, know_image_blackout=False):
+                obs_only=False, know_image_blackout=False, return_all=False ):
 
             N, state_dim = states_prev.shape 
 
@@ -51,6 +51,8 @@ class KalmanFusionModel(nn.Module):
             )
 
             force_beta, image_beta = self.weight_model.forward(observations)
+            print(force_beta.shape)
+            print(image_beta.shape)
             if know_image_blackout:
                 if torch.sum(observations['image']) == 0:
                     image_beta = torch.zeros(image_beta.shape)
@@ -74,6 +76,8 @@ class KalmanFusionModel(nn.Module):
                 state = self.weighted_average(states_pred, weights)
                 state_sigma = self.weighted_average(state_sigma_pred, weights_for_sigma)
             elif self.fusion_type == "poe":
+                print(weights.shape)
+                print(states_pred.shape)
                 state = self.product_of_experts(states_pred, weights)
                 state_sigma = self.weighted_average(state_sigma_pred, weights_for_sigma)
             elif self.fusion_type == "sigma":
@@ -101,8 +105,9 @@ class KalmanFusionModel(nn.Module):
                 else:
                     state_sigma = torch.pinverse(image_state_sigma + force_state_sigma, 1e-9)
 
-                # print("state: ", state[0])
-                # print("state_sigma: ", state_sigma[0])
+            if return_all:
+                # return state, state_sigma,force_stat, image_state, force_beta, image_beta
+                return state, state_sigma, force_state, image_state, weights[1], weights[0]
 
             return state, state_sigma, force_state, image_state
 
@@ -175,7 +180,7 @@ class CrossModalWeights(nn.Module):
                 resblocks.Linear(units, units),
                 resblocks.Linear(units, units),
                 resblocks.Linear(units, units),
-                nn.Linear(units, 2 * self.state_dim),
+                nn.Linear(units, 2 * (self.state_dim+1)),
             )
         else:
             self.shared_layers = nn.Sequential(
@@ -198,12 +203,12 @@ class CrossModalWeights(nn.Module):
                 nn.Sigmoid(),
             )
 
-            self.fusion_layer = nn.Sequential(
-                nn.Linear(units, units),
-                nn.ReLU(inplace=True),
-                nn.Linear(units, self.state_dim+1),
-                nn.Sigmoid(),
-            )
+            # self.fusion_layer = nn.Sequential(
+            #     nn.Linear(units, units),
+            #     nn.ReLU(inplace=True),
+            #     nn.Linear(units, self.state_dim+1),
+            #     nn.Sigmoid(),
+            # )
 
             #todo: the +1 only works for state dim =2
             # it should be + (state_dim)(state_dim-1)/2 
@@ -240,9 +245,9 @@ class CrossModalWeights(nn.Module):
         shared_features = self.shared_layers(observation_features)
 
         if self.use_softmax:
-            assert shared_features.shape == (N, 2 * self.state_dim)
+            assert shared_features.shape == (N, 2 * (self.state_dim+1))
             log_softmax = F.log_softmax(
-                shared_features.reshape((N, 2, self.state_dim)),
+                shared_features.reshape((N, 2, self.state_dim+1)),
                 dim=1
             )
             force_prop_beta = log_softmax[:, 0, :]
