@@ -77,7 +77,7 @@ if __name__ == '__main__':
     else:
         weight_dim=2
     #weight model and fusion model
-    weight_model = CrossModalWeights(state_dim=weight_dim)
+    weight_model = CrossModalWeights(state_dim=weight_dim, old_weighting=args.old_weighting)
     fusion_model = KalmanFusionModel(image_model, force_model, weight_model,
                                      fusion_type=args.fusion_type, old_weighting=args.old_weighting)
 
@@ -262,6 +262,7 @@ if __name__ == '__main__':
         obs_only=False
         if args.sequential_image != 1 :
             know_image_blackout= True
+            print("blackout")
         else:
             know_image_blackout = False 
         training.train_fusion(buddy, fusion_model, e2e_trainset_loader,
