@@ -1,7 +1,7 @@
 #!/bin/bash
 
 
-name="fusion_poe_seq5_0"
+name="fusion_poe_seq5_3"
 echo $name
 load="checkpoints/fusion_poe_blackout_0.8_1-phase_3_e2e.ckpt"
 
