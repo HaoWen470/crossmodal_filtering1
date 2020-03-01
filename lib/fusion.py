@@ -170,14 +170,14 @@ class CrossModalWeights(nn.Module):
                  use_log_softmax=False, old_weighting=True):
         super().__init__()
 
+        if old_weighting:
+            state_dim -= 1
+
         obs_pose_dim = 3
         obs_sensors_dim = 7
         self.state_dim = state_dim
         self.use_softmax = use_softmax
         self.use_log_softmax = use_log_softmax
-
-        if old_weighting:
-            state_dim -= 1
 
         self.observation_image_layers = nn.Sequential(
             nn.Conv2d(
@@ -222,7 +222,7 @@ class CrossModalWeights(nn.Module):
                 resblocks.Linear(units, units),
                 resblocks.Linear(units, units),
                 resblocks.Linear(units, units),
-                nn.Linear(units, 2 * (self.state_dim)),
+                nn.Linear(units, 2 * (self.state_dim + 1)),
             )
         else:
             self.shared_layers = nn.Sequential(
@@ -289,7 +289,6 @@ class CrossModalWeights(nn.Module):
             else:
                 softmax_fn = F.softmax
 
-            assert shared_features.shape == (N, 2 * (self.state_dim + 1))
             softmax = softmax_fn(
                 shared_features.reshape((N, 2, self.state_dim + 1)),
                 dim=1
