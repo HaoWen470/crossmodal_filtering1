@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import numpy as np
+import fannypack.utils as utils
 
 
 class ParticleFusionModel(nn.Module):
@@ -10,6 +11,8 @@ class ParticleFusionModel(nn.Module):
         self.image_model = image_model
         self.force_model = force_model
         self.weight_model = weight_model
+
+        weight_model.use_log_softmax = True
 
         self.freeze_image_model = True
         self.freeze_force_model = True
@@ -53,6 +56,8 @@ class ParticleFusionModel(nn.Module):
         image_log_beta, force_log_beta = self.weight_model(observations)
         assert image_log_beta.shape == (N, 1)
         assert force_log_beta.shape == (N, 1)
+
+        self._betas = utils.to_numpy([image_log_beta, force_log_beta])
 
         # Ignore image if blacked out
         if know_image_blackout:

@@ -111,7 +111,7 @@ def train_dynamics_recurrent(buddy, pf_model, dataloader, log_interval=10,
         buddy.minimize(
             loss,
             optimizer_name=optim_name,
-            checkpoint_interval=10000)
+            checkpoint_interval=1000)
 
         if buddy.optimizer_steps % log_interval == 0:
             with buddy.log_scope(optim_name):
@@ -159,7 +159,7 @@ def train_dynamics(buddy, pf_model, dataloader,
         buddy.minimize(
             loss,
             optimizer_name=optim_name,
-            checkpoint_interval=10000)
+            checkpoint_interval=1000)
 
         if buddy.optimizer_steps % log_interval == 0:
             with buddy.log_scope(optim_name):
@@ -204,7 +204,7 @@ def train_measurement(buddy, pf_model, dataloader,
         buddy.minimize(
             loss,
             optimizer_name=optim_name,
-            checkpoint_interval=10000)
+            checkpoint_interval=1000)
 
         if buddy.optimizer_steps % log_interval == 0:
             with buddy.log_scope(optim_name):
@@ -291,7 +291,7 @@ def train_e2e(buddy, pf_model, dataloader, log_interval=2,
         buddy.minimize(
             torch.mean(torch.stack(losses)),
             optimizer_name=optim_name,
-            checkpoint_interval=10000)
+            checkpoint_interval=1000)
 
         if buddy.optimizer_steps % log_interval == 0:
             with buddy.log_scope(optim_name):
