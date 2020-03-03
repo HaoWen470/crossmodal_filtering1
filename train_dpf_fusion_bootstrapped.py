@@ -205,6 +205,8 @@ optim_name = "e2e_fusion"
 buddy.set_learning_rate(1e-5, optimizer_name=optim_name)
 pf_fusion_model.freeze_image_model = False
 pf_fusion_model.freeze_force_model = False
+pf_fusion_model.image_model.freeze_dynamics_model = True
+pf_fusion_model.force_model.freeze_dynamics_model = True
 e2e_trainset_loader = torch.utils.data.DataLoader(
     e2e_trainset, batch_size=32, shuffle=True, num_workers=2)
 for i in range(E2E_JOINT_EPOCHS):
@@ -214,6 +216,8 @@ for i in range(E2E_JOINT_EPOCHS):
         pf_fusion_model,
         e2e_trainset_loader,
         loss_type="mse",
-        optim_name=optim_name)
+        optim_name=optim_name,
+        # Be aware of image blackout if we're rate-limiting images
+        know_image_blackout=(args.sequential_image != 1))
 buddy.save_checkpoint("phase_4_e2e_joint")
 buddy.save_checkpoint()

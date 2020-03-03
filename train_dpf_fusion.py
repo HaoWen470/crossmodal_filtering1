@@ -254,7 +254,9 @@ for i in range(E2E_JOINT_EPOCHS):
         pf_fusion_model,
         e2e_trainset_loader,
         loss_type="mse",
-        optim_name=optim_name)
+        optim_name=optim_name,
+        # Be aware of image blackout if we're rate-limiting images
+        know_image_blackout=(args.sequential_image != 1))
 buddy.save_checkpoint("phase_4_e2e_joint")
 buddy.save_checkpoint()
 
