@@ -41,7 +41,17 @@ pf_model = panda_models.PandaParticleFilterNetwork(
 buddy = fannypack.utils.Buddy(
     experiment_name + "_unfrozen",
     pf_model,
-    optimizer_names=["e2e", "dynamics", "dynamics_recurrent", "measurement"],
+    optimizer_names=[
+        "e2e_fusion",
+        "e2e_image",
+        "e2e_force",
+        "dynamics_image",
+        "dynamics_force",
+        "dynamics_recurrent_image",
+        "dynamics_recurrent_force",
+        "measurement_image",
+        "measurement_force",
+    ]
 )
 buddy.load_metadata(
     experiment_name=experiment_name

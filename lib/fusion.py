@@ -163,6 +163,35 @@ class KalmanFusionModel(nn.Module):
         var = (1.0 / T.sum(0))
         return mu
 
+class ConstantWeights(nn.Module):
+    def __init__(self, state_dim=2, use_softmax=True, use_log_softmax=True, old_weighting=True):
+        super().__init__()
+
+        assert use_softmax
+        self.use_log_softmax = use_log_softmax
+
+        if old_weighting:
+            state_dim -= 1
+        self.state_dim = state_dim
+        self.logits = nn.Parameter(torch.zeros((1, 2, self.state_dim + 1)))
+
+    def forward(self, observations):
+        N = observations['image'].shape[0]
+
+        if self.use_log_softmax:
+            softmax_fn = F.log_softmax
+        else:
+            assert False, "not currently used anywhere"
+            softmax_fn = F.softmax
+
+        softmax = softmax_fn(
+            self.logits,
+            dim=1
+        ).expand([N, 2, self.state_dim + 1])
+        force_prop_beta = softmax[:, 0, :]
+        image_beta = softmax[:, 1, :]
+
+        return image_beta, force_prop_beta
 
 class CrossModalWeights(nn.Module):
 
