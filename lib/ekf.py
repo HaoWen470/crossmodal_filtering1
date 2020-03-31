@@ -43,14 +43,13 @@ class KalmanFilterNetwork(nn.Module):
         controls = controls.repeat(1, noutputs, 1)
         x.requires_grad_(True)
         y = net(x, controls)
-        
+
         mask = torch.eye(noutputs).repeat(batch, 1, 1).to(x.device)
         if type(y) is tuple:
-            y[output_dim].backward(mask, create_graph=True)
-        else:
-            y.backward(mask, create_graph=True)
+            y = y[output_dim]
+        jac = torch.autograd.grad(y, x, mask, create_graph=True)
 
-        return x.grad
+        return jac[0]
 
     def forward(self, states_prev,
                 states_sigma_prev,
