@@ -51,18 +51,28 @@ pf_fusion_model = fusion_pf.ParticleFusionModel(
 )
 
 buddy = fannypack.utils.Buddy(
-    experiment_name + "_logfix",
+    experiment_name + "_logfix2",
     pf_fusion_model,
-    optimizer_names=["e2e", "dynamics", "dynamics_recurrent", "measurement"],
+    optimizer_names=[
+        "e2e_fusion",
+        "e2e_image",
+        "e2e_force",
+        "dynamics_image",
+        "dynamics_force",
+        "dynamics_recurrent_image",
+        "dynamics_recurrent_force",
+        "measurement_image",
+        "measurement_force",
+    ]
 )
-buddy.load_checkpoint()
-# buddy.load_metadata(
-#     experiment_name=experiment_name
-# )
-# buddy.load_checkpoint(
-#     label="phase_3_e2e_individual",
-#     experiment_name=experiment_name
-# )
+# buddy.load_checkpoint()
+buddy.load_metadata(
+    experiment_name=experiment_name
+)
+buddy.load_checkpoint(
+    label="phase_3_e2e_individual",
+    experiment_name=experiment_name
+)
 
 # Load datasets
 dataset_args = buddy.metadata
@@ -106,6 +116,7 @@ pf_fusion_model.freeze_image_model = False
 pf_fusion_model.freeze_force_model = False
 pf_fusion_model.image_model.freeze_dynamics_model = True
 pf_fusion_model.force_model.freeze_dynamics_model = True
+buddy.set_learning_rate(1e-5, optimizer_name="e2e_fusion")
 e2e_trainset_loader = torch.utils.data.DataLoader(
     e2e_trainset, batch_size=32, shuffle=True, num_workers=2)
 for i in range(E2E_EPOCHS):
@@ -116,5 +127,5 @@ for i in range(E2E_EPOCHS):
         e2e_trainset_loader,
         loss_type="mse",
         optim_name=optim_name)
-buddy.save_checkpoint("phase_4_e2e_joint)
+buddy.save_checkpoint("phase_4_e2e_joint")
 buddy.save_checkpoint()
