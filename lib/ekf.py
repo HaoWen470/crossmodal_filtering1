@@ -19,7 +19,7 @@ class KFMeasurementModel(abc.ABC, nn.Module):
 
 class KalmanFilterNetwork(nn.Module):
 
-    def __init__(self, dynamics_model, measurement_model):
+    def __init__(self, dynamics_model, measurement_model, R=None):
         super().__init__()
 
         self.dynamics_model = dynamics_model
@@ -32,6 +32,8 @@ class KalmanFilterNetwork(nn.Module):
         self.freeze_dynamics_model = False
         self.freeze_measurement_model = False
 
+        self.R = R
+
     def get_jacobian(self, net, x, noutputs, batch, controls, output_dim=0):
         x = x.detach().clone()
         x = x.squeeze()
@@ -43,14 +45,13 @@ class KalmanFilterNetwork(nn.Module):
         controls = controls.repeat(1, noutputs, 1)
         x.requires_grad_(True)
         y = net(x, controls)
-        
+
         mask = torch.eye(noutputs).repeat(batch, 1, 1).to(x.device)
         if type(y) is tuple:
-            y[output_dim].backward(mask, create_graph=True)
-        else:
-            y.backward(mask, create_graph=True)
+            y = y[output_dim]
+        jac = torch.autograd.grad(y, x, mask, create_graph=True)
 
-        return x.grad
+        return jac[0]
 
     def forward(self, states_prev,
                 states_sigma_prev,
@@ -92,6 +93,9 @@ class KalmanFilterNetwork(nn.Module):
         else:
             # do normal measurement update step
             z, R = self.measurement_model(observations, states_pred)
+
+        if self.R is not None:
+            R = self.R
 
         #Kalman Gain
         K_update = torch.bmm(states_sigma_pred, torch.inverse(states_sigma_pred + R))

@@ -34,6 +34,7 @@ if __name__ == '__main__':
     parser.add_argument("--sequential_image", type=int, default=1)
     parser.add_argument("--start_timestep", type=int, default=0)
     parser.add_argument("--load_checkpoint", type=str, default=None)
+    parser.add_argument("--set_r", type=float, default=None)
 
     args = parser.parse_args()
 
@@ -54,16 +55,16 @@ if __name__ == '__main__':
         'init state noise': args.init_state_noise,
         'sequential_image_rate': args.sequential_image,
         'start_timestep': args.start_timestep,
+        'set_r': args.set_r,
 
     }
     measurement = PandaEKFMeasurementModel(units=args.hidden_units)
     dynamics = PandaDynamicsModel(use_particles=False)
-    ekf = KalmanFilterNetwork(dynamics, measurement)
+    ekf = KalmanFilterNetwork(dynamics, measurement, R=args.set_r)
     print("Creating model...")
     buddy = fannypack.utils.Buddy(experiment_name,
                                   ekf,
                                   optimizer_names=["ekf", "dynamics", "measurement"],
-                                  load_checkpoint=True,
                                   )
 
     if args.load_checkpoint is not None:
