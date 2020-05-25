@@ -31,19 +31,20 @@ if __name__ == '__main__':
     parser.add_argument("--blackout", type=float, default=0.0)
     parser.add_argument("--mass", action="store_true")
     parser.add_argument("--omnipush", action="store_true")
-    parser.add_argument("--lr", type=float, default=1e-5)
+    parser.add_argument("--lr", type=float, default=1e-4)
     parser.add_argument("--hidden_units", type=int, default=64)
     parser.add_argument("--many_loss", action="store_true")
     parser.add_argument("--init_state_noise", type=float, default=0.2)
     parser.add_argument("--sequential_image", type=int, default=1)
     parser.add_argument("--start_timestep", type=int, default=0)
     parser.add_argument("--old_weighting", action="store_true")
+    parser.add_argument("--no_proprio", action="store_true")
 
     args = parser.parse_args()
 
     experiment_name = args.experiment_name
     dataset_args = {
-        'use_proprioception': True,
+        'use_proprioception': not args.no_proprio,
         'use_haptics': True,
         'use_vision': True,
         'vision_interval': 2,

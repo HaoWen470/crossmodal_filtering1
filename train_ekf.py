@@ -35,12 +35,14 @@ if __name__ == '__main__':
     parser.add_argument("--start_timestep", type=int, default=0)
     parser.add_argument("--load_checkpoint", type=str, default=None)
     parser.add_argument("--set_r", type=float, default=None)
+    parser.add_argument("--no_proprio", action="store_true")
+
 
     args = parser.parse_args()
 
     experiment_name = args.experiment_name
     dataset_args = {
-        'use_proprioception': True,
+        'use_proprioception': not args.no_proprio,
         'use_haptics': True,
         'use_vision': True,
         'vision_interval': 2,
