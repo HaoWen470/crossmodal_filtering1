@@ -220,6 +220,7 @@ def train_e2e(buddy, ekf_model, dataloader,
         assert batch_controls.shape == (N, timesteps, control_dim)
         state, _ = ekf_model.measurement_model.forward(utils.DictIterator(batch_obs)[:, 0, :], batch_states[:, 0, :]  )
         state_sigma = torch.eye(state.shape[-1], device=buddy._device) * init_state_noise
+        #todo: square! 
         state_sigma = state_sigma.unsqueeze(0).repeat(N, 1, 1)
 
         if obs_only:
@@ -275,6 +276,10 @@ def rollout_kf(kf_model, trajectories, start_time=0, max_timesteps=300,
     kf_model.eval()
     end_time = np.min([len(s) for s, _, _ in trajectories] +
                       [start_time + max_timesteps])
+    
+    print("endtime: ", end_time)
+    
+    end_time -=1
     actual_states = [states[start_time:end_time]
                      for states, _, _ in trajectories]
 
@@ -285,12 +290,14 @@ def rollout_kf(kf_model, trajectories, start_time=0, max_timesteps=300,
     device = next(kf_model.parameters()).device
 
     initial_states = np.zeros((N, state_dim))
-    initial_sigmas = np.ones((N, state_dim, state_dim)) * init_state_noise
+    initial_sigmas= np.zeros((N, state_dim, state_dim))
     initial_obs = {}
 
     if true_initial:
         for i in range(N):
             initial_states[i] = trajectories[i][0][0] + np.random.normal(0.0, scale=init_state_noise, size=initial_states[i].shape)
+            initial_sigmas[i] = np.eye(state_dim) * init_state_noise
+            ## todo: square? 
         (initial_states,
          initial_sigmas) = utils.to_torch((
                                            initial_states,
@@ -357,7 +364,7 @@ def rollout_kf(kf_model, trajectories, start_time=0, max_timesteps=300,
 
         states = state_estimates
         sigmas = sigma_estimates
-
+        
         for i in range(len(trajectories)):
             predicted_states[i].append(
                 utils.to_numpy(
@@ -386,10 +393,17 @@ def rollout_kf(kf_model, trajectories, start_time=0, max_timesteps=300,
         f.create_dataset("predicted_sigmas", data=predicted_sigmas)
         f.close()
         
-    return predicted_states, actual_states
+    return predicted_states, actual_states, predicted_sigmas
 
 def eval_rollout(predicted_states, actual_states, plot=False, plot_traj=None, start=0):
 
+    rmse_x = np.sqrt(np.mean(
+                (predicted_states[:, start:, 0] - actual_states[:, start:, 0]) ** 2))
+    
+    rmse_y = np.sqrt(np.mean(
+            (predicted_states[:, start:, 1] - actual_states[:, start:, 1]) ** 2))
+    
+    print("rsme x: \n{} \n y:\n{}".format(rmse_x, rmse_y))
     if plot:
         timesteps = len(actual_states[0])
 
@@ -431,7 +445,6 @@ def eval_rollout(predicted_states, actual_states, plot=False, plot_traj=None, st
             plt.show()
 
             print(f"State #{j} // RMSE = {rmse}")
-            print(rsme)
 
 
 

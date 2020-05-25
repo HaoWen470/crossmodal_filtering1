@@ -87,7 +87,7 @@ if __name__ == '__main__':
                                                    "dynamics", "dynamics_recurr",
                                                    "force_ekf", "im_ekf",
                                                    "fusion"],
-                                  load_checkpoint=True,
+                                  #load_checkpoint=True,
                                   )
     buddy.add_metadata(dataset_args)
 

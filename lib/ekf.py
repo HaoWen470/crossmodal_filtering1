@@ -95,7 +95,7 @@ class KalmanFilterNetwork(nn.Module):
             z, R = self.measurement_model(observations, states_pred)
 
         if self.R is not None:
-            R = self.R
+            R = torch.eye(state_dim).repeat(N, 1, 1).to(z.device) * self.R
 
         #Kalman Gain
         K_update = torch.bmm(states_sigma_pred, torch.inverse(states_sigma_pred + R))
