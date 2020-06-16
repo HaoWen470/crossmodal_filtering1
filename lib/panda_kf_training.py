@@ -168,6 +168,8 @@ def train_fusion(buddy, fusion_model, dataloader, log_interval=2,
             prev_state = state
             prev_state_sigma = state_sigma
 
+            # print("input: ", state[0], state_sigma[0])
+
             state, state_sigma, force_state, image_state = fusion_model.forward(
                 prev_state,
                 prev_state_sigma,
@@ -190,6 +192,8 @@ def train_fusion(buddy, fusion_model, dataloader, log_interval=2,
                 losses_total.append(loss_image + loss_force +loss_fused)
 
         loss = torch.mean(torch.stack(losses_total))
+
+        # print("loss: ", loss)
         buddy.minimize(
             loss,
             optimizer_name= optim_name,
@@ -201,6 +205,8 @@ def train_fusion(buddy, fusion_model, dataloader, log_interval=2,
                 buddy.log("Image loss",  np.mean(np.array(losses_image)))
                 buddy.log("Force loss",  np.mean(np.array(losses_force)))
                 buddy.log("Fused loss",  np.mean(np.array(losses_fused)))
+                buddy.log_model_grad_hist()
+                buddy.log_model_weights_hist()
 
 
 def train_e2e(buddy, ekf_model, dataloader,
@@ -266,7 +272,8 @@ def train_e2e(buddy, ekf_model, dataloader,
         if buddy.optimizer_steps % log_interval == 0:
             with buddy.log_scope(optim_name):
                 buddy.log("Training loss", loss.item())
-
+                buddy.log_model_grad_hist()
+                buddy.log_model_weights_hist()
 def rollout_kf(kf_model, trajectories, start_time=0, max_timesteps=300,
                noisy_dynamics=True, true_initial=True, init_state_noise=0.0,
                save_data_name=None):

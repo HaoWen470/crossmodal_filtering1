@@ -71,7 +71,8 @@ class PandaDynamicsModel(dpf.DynamicsModel):
     default_state_noise_stddev = 0.02
 
     def __init__(self, state_dim=2, state_noise_stddev=None,
-                 units=32, use_particles=True, identity_prediction_dims=()):
+                 units=32, use_particles=True,
+                 identity_prediction_dims=(), learnable_Q=False):
 
         super().__init__()
 
@@ -113,13 +114,18 @@ class PandaDynamicsModel(dpf.DynamicsModel):
         )
 
         self.units = units
+
         self.Q = torch.from_numpy(
             np.diag(np.array(self.state_noise_stddev))).float()
+
+        if learnable_Q:
+            self.Q.requires_grad = True
 
     def forward(self, states_prev, controls, noisy=False):
         # states_prev:  (N, M, state_dim)
         # controls: (N, control_dim)
-        self.Q = self.Q.to(states_prev.device)
+        if self.Q.device != states_prev.device:
+            self.Q = self.Q.to(states_prev.device)
 
         self.jacobian = False
         if self.use_particles:
@@ -347,7 +353,8 @@ class PandaEKFMeasurementModel(dpf.MeasurementModel):
                  state_dim=2,
                  use_states=False,
                  use_spatial_softmax=False,
-                 missing_modalities=None):
+                 missing_modalities=None,
+                 add_R_noise = 0.001):
         super().__init__()
 
         obs_pose_dim = 3
@@ -472,6 +479,8 @@ class PandaEKFMeasurementModel(dpf.MeasurementModel):
                 m.weight.data.fill_(1)
                 m.bias.data.zero_()
 
+        self.add_R_noise = torch.ones(state_dim) * add_R_noise
+
     def forward(self, observations, states):
         assert type(observations) == dict
 
@@ -529,5 +538,7 @@ class PandaEKFMeasurementModel(dpf.MeasurementModel):
         assert lt.shape == (N, self.state_dim, self.state_dim)
 
         R = lt ** 2
+
+        R += torch.diag(self.add_R_noise)
 
         return z, R
