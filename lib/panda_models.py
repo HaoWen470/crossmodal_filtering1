@@ -354,7 +354,7 @@ class PandaEKFMeasurementModel(dpf.MeasurementModel):
                  use_states=False,
                  use_spatial_softmax=False,
                  missing_modalities=None,
-                 add_R_noise = 0.001):
+                 add_R_noise = 1e-6):
         super().__init__()
 
         obs_pose_dim = 3
@@ -539,6 +539,7 @@ class PandaEKFMeasurementModel(dpf.MeasurementModel):
 
         R = lt ** 2
 
-        R += torch.diag(self.add_R_noise)
+        if self.add_R_noise[0] > 0:
+            R += torch.diag(self.add_R_noise).to(R.device)
 
         return z, R

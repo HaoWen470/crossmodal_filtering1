@@ -125,24 +125,19 @@ class KalmanFusionModel(nn.Module):
 
 
                 # NUMERICAL INSTABILITY
-                state_sigma = torch.inverse(
-                    torch.inverse(image_mat + 1e-9) +
-                    torch.inverse(force_mat + 1e-9) + 1e-9)
-
-                #HACK!
-                # state_sigma = 0.5* (image_mat + force_mat)
-
-                if torch.isnan(state_sigma).any():
-                    print("ISNAN!!!")
-
-                if self.safety:
-                    added_safety= torch.diag(torch.ones(state_dim) * 1e-6).repeat(N, 1, 1).to(force_state.device)
-
+                # state_sigma = torch.inverse(
+                #     torch.inverse(image_mat + 1e-3) +
+                #     torch.inverse(force_mat + 1e-3) + 1e-3)
+                try:
                     state_sigma = torch.inverse(
-                        torch.inverse(image_mat+added_safety) +
-                        torch.inverse(force_mat+added_safety) +
-                        added_safety)
-
+                        torch.inverse(image_mat ) +
+                        torch.inverse(force_mat ) )
+                except:
+                    print("need safety")
+                    safety = 1e-6
+                    state_sigma = torch.inverse(
+                        torch.inverse(image_mat + safety) +
+                        torch.inverse(force_mat + safety) + safety)
 
                 if know_image_blackout or self.know_image_blackout:
                     blackout_indices = torch.sum(torch.abs(
