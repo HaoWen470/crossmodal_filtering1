@@ -117,25 +117,55 @@ class KalmanFusionModel(nn.Module):
                 image_mat[:, 0, 1] = 0
                 image_weight = 1.0 / (utility.diag_to_vector(image_mat) + 1e-9)
 
-                if know_image_blackout:
-                    if torch.sum(observations['image']) == 0:
-                        image_weight = torch.zeros(image_weight.shape)
-
                 force_mat = force_state_sigma.clone()
                 force_mat[:, 1, 0] = 0
                 force_mat[:, 0, 1] = 0
                 force_weight = 1.0 / (utility.diag_to_vector(force_mat) + 1e-9)
 
+
+
+                # NUMERICAL INSTABILITY
+                state_sigma = torch.inverse(
+                    torch.inverse(image_mat + 1e-9) +
+                    torch.inverse(force_mat + 1e-9) + 1e-9)
+
+                #HACK!
+                # state_sigma = 0.5* (image_mat + force_mat)
+
+                if torch.isnan(state_sigma).any():
+                    print("ISNAN!!!")
+
+                if self.safety:
+                    added_safety= torch.diag(torch.ones(state_dim) * 1e-6).repeat(N, 1, 1).to(force_state.device)
+
+                    state_sigma = torch.inverse(
+                        torch.inverse(image_mat+added_safety) +
+                        torch.inverse(force_mat+added_safety) +
+                        added_safety)
+
+
+                if know_image_blackout or self.know_image_blackout:
+                    blackout_indices = torch.sum(torch.abs(
+                        observations['image'].reshape((N, -1))), dim=1) < 1e-3
+
+                    mask_shape = (N, 1)
+                    mask = torch.ones(mask_shape, device=device)
+                    mask[blackout_indices] = 0
+
+                    image_mat_new = torch.zeros(mask_shape, device=device)
+                    image_mat_new[blackout_indices] = 1e-9
+
+
+                    force_beta_new = torch.zeros(mask_shape, device=device)
+                    force_beta_new[blackout_indices] = 1. - 1e-9
+                    force_weight = force_beta_new + mask * force_weight
+
+                    state_sigma[blackout_indices] = force_state_sigma[blackout_indices]
+
+
                 weights = torch.stack([image_weight, force_weight])
                 state = self.weighted_average(states_pred, weights)
 
-                if self.safety:
-
-                    state_sigma = torch.pinverse(image_state_sigma + force_state_sigma
-                                                 + torch.diag(torch.ones(state_dim) * 1e-5).repeat(N, 1, 1).to(force_state.device), 1e-9)
-                else:
-                    state_sigma = torch.pinverse(
-                        image_state_sigma + force_state_sigma, 1e-9)
 
             if return_all:
                 # return state, state_sigma,force_stat, image_state,
