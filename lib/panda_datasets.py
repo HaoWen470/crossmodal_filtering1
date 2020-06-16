@@ -41,6 +41,7 @@ def load_trajectories(*paths, use_vision=True, vision_interval=10,
                       image_blackout_ratio=0,
                       sequential_image_rate=1,
                       start_timestep=0,
+                      direction_filter=None, 
                       **unused):
     """
     Loads a list of trajectories from a set of input paths, where each
@@ -80,6 +81,8 @@ def load_trajectories(*paths, use_vision=True, vision_interval=10,
                 states[:, :2] = trajectory['Cylinder0_pos'][:, :2]  # x, y
                 if use_mass:
                     states[:, 3] = trajectory['Cylinder0_mass'][:, 0]
+                
+
 
                 # states[:, 2] = np.cos(trajectory['object_z_angle'])
                 # states[:, 3] = np.sin(trajectory['object_z_angle'])
@@ -167,6 +170,16 @@ def load_trajectories(*paths, use_vision=True, vision_interval=10,
                     [[0.03975769, 0.07004428, 0.03383452, 0.04635485,
                       0.07224426, 0.05950112, 0.40950698]], dtype=np.float32)
 
+                x_delta = states[start_timestep, 0] - states[-1, 0]
+                y_delta = states[start_timestep, 1]-states[-1, 1]
+                if direction_filter == 'x':
+                    if not (abs(x_delta) > 0.55 and abs(y_delta) < 0.2):
+                        
+                        continue 
+                if direction_filter == 'y':
+                    if not (abs(x_delta) < 0.20 and abs(y_delta) > 0.55):
+                        continue 
+                
                 trajectories.append((
                     states[start_timestep:],
                     utils.DictIterator(observations)[start_timestep:],
