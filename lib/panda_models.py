@@ -351,7 +351,7 @@ class PandaEKFMeasurementModel(dpf.MeasurementModel):
 
     def __init__(self, units=128,
                  state_dim=2,
-                 use_states=False,
+                 use_states=True,
                  use_spatial_softmax=False,
                  missing_modalities=None,
                  add_R_noise = 1e-6):

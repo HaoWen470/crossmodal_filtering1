@@ -91,7 +91,6 @@ if __name__ == '__main__':
         "simpler/train4.hdf5",
         "simpler/train5.hdf5",
 
-
         subsequence_length=16,
         particle_count=1,
         particle_stddev=(.03, .03),
@@ -177,7 +176,7 @@ if __name__ == '__main__':
             shuffle=True,
             num_workers=8)
 
-        for i in range(int(args.pretrain/2)):
+        for i in range(int(args.pretrain)):
             print("Training measurement epoch", i)
             training.train_measurement(buddy, ekf, measurement_trainset_loader,
                                        log_interval=20, optim_name="measurement", nll=args.measurement_nll)
@@ -191,8 +190,9 @@ if __name__ == '__main__':
         obs_only=False
         print("Training ekf epoch", i)
         training.train_e2e(buddy, ekf, e2e_trainset_loader,
-                           optim_name="ekf", obs_only=obs_only,
-                           init_state_noise=args.init_state_noise, nll=args.ekf_nll)
+                           optim_name="ekf",
+                           init_state_noise=args.init_state_noise,
+                           nll=args.ekf_nll)
 
     buddy.save_checkpoint("phase_3_e2e")
     buddy.save_checkpoint()

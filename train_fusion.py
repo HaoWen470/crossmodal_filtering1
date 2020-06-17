@@ -87,8 +87,17 @@ if __name__ == '__main__':
         weight_dim=2
     #weight model and fusion model
     weight_model = CrossModalWeights(state_dim=weight_dim, old_weighting=args.old_weighting)
+
+    if args.sequential_image > 1:
+        know_image_blackout = True
+        print("blackout")
+    else:
+        know_image_blackout = False
+
     fusion_model = KalmanFusionModel(image_model, force_model, weight_model,
-                                     fusion_type=args.fusion_type, old_weighting=args.old_weighting)
+                                     fusion_type=args.fusion_type,
+                                     old_weighting=args.old_weighting,
+                                     know_image_blackout=know_image_blackout)
 
     buddy = fannypack.utils.Buddy(experiment_name,
                                   fusion_model,
@@ -274,16 +283,10 @@ if __name__ == '__main__':
     # train fusion
     for i in range(args.epochs):
         print("Training fusion epoch", i)
-        obs_only=False
-        if args.sequential_image != 1 :
-            know_image_blackout= True
-            print("blackout")
-        else:
-            know_image_blackout = False 
+
         training.train_fusion(buddy, fusion_model, e2e_trainset_loader,
                               optim_name="fusion", obs_only=obs_only, one_loss= not args.many_loss,
                               init_state_noise=args.init_state_noise,
-                              know_image_blackout=know_image_blackout,
                               nll=args.fusion_nll)
         buddy.save_checkpoint()
     buddy.save_checkpoint("phase_4_fusion")

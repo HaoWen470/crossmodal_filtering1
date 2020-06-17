@@ -136,100 +136,11 @@ def train_measurement(buddy, kf_model, dataloader, log_interval=10,
             buddy.log_model_weights_hist()
     print("Epoch loss:", np.mean(losses))
 
-def train_fusion(buddy, fusion_model, dataloader, log_interval=2,
-                 optim_name="fusion", obs_only=False, init_state_noise=0.2, 
-                 one_loss=True, know_image_blackout=False, nll=False):
-    for batch_idx, batch in enumerate(dataloader):
-        # Transfer to GPU and pull out batch data
-        batch_gpu = utils.to_device(batch, buddy._device)
-        _, batch_states, batch_obs, batch_controls = batch_gpu
-        # N = batch size
-        N, timesteps, control_dim = batch_controls.shape
-        N, timesteps, state_dim = batch_states.shape
-        assert batch_controls.shape == (N, timesteps, control_dim)
-
-        state = batch_states[:, 0, :]
-        state_sigma = torch.eye(state.shape[-1], device=buddy._device) * init_state_noise
-        state_sigma = state_sigma.unsqueeze(0).repeat(N, 1, 1)
-
-        if obs_only:
-            state, state_sigma, force_state, image_state = fusion_model.forward(
-                state,
-                state_sigma,
-                utils.DictIterator(batch_obs)[:, 0, :],
-                batch_controls[:, 0, :],
-                obs_only = obs_only,
-            )
-        else:
-            dist = torch.distributions.Normal(
-                torch.tensor([0.]), torch.ones(state.shape)*init_state_noise)
-            noise = dist.sample().to(state.device)
-            state += noise
-
-        losses_image = []
-        losses_force = []
-        losses_fused = []
-        losses_nll = []
-        losses_total = []
-
-
-        for t in range(1, timesteps-1):
-            prev_state = state
-            prev_state_sigma = state_sigma
-
-            # print("input: ", state[0], state_sigma[0])
-
-            state, state_sigma, force_state, image_state = fusion_model.forward(
-                prev_state,
-                prev_state_sigma,
-                utils.DictIterator(batch_obs)[:, t, :],
-                batch_controls[:, t, :],
-                know_image_blackout= know_image_blackout,
-            )
-
-            loss_image = torch.mean((image_state - batch_states[:, t, :]) ** 2)
-            loss_force = torch.mean((force_state - batch_states[:, t, :]) ** 2)
-            loss_fused = torch.mean((state - batch_states[:, t, :]) ** 2)
-
-            losses_force.append(loss_force.item())
-            losses_image.append(loss_image.item())
-            losses_fused.append(loss_fused.item())
-
-            if nll:
-
-                loss_nll = torch.mean(-utility.gaussian_log_likelihood(state, batch_states[:, t, :], state_sigma))
-                losses_nll.append(loss_nll)
-                losses_total.append(loss_nll)
-
-            elif one_loss:
-                losses_total.append(loss_fused)
-            else: 
-                losses_total.append(loss_image + loss_force +loss_fused)
-
-
-
-        loss = torch.mean(torch.stack(losses_total))
-
-        # print("loss: ", loss)
-        buddy.minimize(
-            loss,
-            optimizer_name= optim_name,
-            checkpoint_interval=10000)
-
-        if buddy.optimizer_steps % log_interval == 0:
-            with buddy.log_scope("fusion"):
-                buddy.log("Training loss",  loss.item())
-                buddy.log("Image loss",  np.mean(np.array(losses_image)))
-                buddy.log("Force loss",  np.mean(np.array(losses_force)))
-                buddy.log("Fused loss",  np.mean(np.array(losses_fused)))
-                buddy.log_model_grad_hist()
-                buddy.log_model_weights_hist()
-
 
 def train_e2e(buddy, ekf_model, dataloader,
               log_interval=2, optim_name="ekf",
-              obs_only=False,
-              checkpoint_interval = 1000,
+              measurement_init=False,
+              checkpoint_interval=1000,
               init_state_noise=0.2, nll=False
               ):
     # Train for 1 epoch
@@ -241,26 +152,21 @@ def train_e2e(buddy, ekf_model, dataloader,
         N, timesteps, control_dim = batch_controls.shape
         N, timesteps, state_dim = batch_states.shape
         assert batch_controls.shape == (N, timesteps, control_dim)
-        state, _ = ekf_model.measurement_model.forward(utils.DictIterator(batch_obs)[:, 0, :], batch_states[:, 0, :]  )
+
+        state = batch_states[:, 0, :]
+        #todo: square
         state_sigma = torch.eye(state.shape[-1], device=buddy._device) * init_state_noise
-        #todo: square! 
         state_sigma = state_sigma.unsqueeze(0).repeat(N, 1, 1)
 
-        if obs_only:
-            state, state_sigma = ekf_model.forward(
-                state,
-                state_sigma,
+        if measurement_init:
+            state, state_sigma = ekf_model.measurement_model.forward(
                 utils.DictIterator(batch_obs)[:, 0, :],
-                batch_controls[:, 0, :],
-                obs_only=obs_only,
-            )
+                batch_states[:, 0, :])
         else:
             dist = torch.distributions.Normal(
-                torch.tensor([0.]), torch.ones(state.shape)*init_state_noise)
+                torch.tensor([0.]), torch.ones(state.shape) * init_state_noise)
             noise = dist.sample().to(state.device)
             state += noise
-
-        ekf_model.measurement_model.use_states = True
 
         # Accumulate losses from each timestep
         losses = []
@@ -288,7 +194,7 @@ def train_e2e(buddy, ekf_model, dataloader,
         loss = torch.mean(torch.stack(losses))
         buddy.minimize(
             loss,
-            optimizer_name= optim_name,
+            optimizer_name=optim_name,
             checkpoint_interval=checkpoint_interval)
 
         if buddy.optimizer_steps % log_interval == 0:
@@ -296,6 +202,89 @@ def train_e2e(buddy, ekf_model, dataloader,
                 buddy.log("Training loss", loss.item())
                 buddy.log_model_grad_hist()
                 buddy.log_model_weights_hist()
+
+def train_fusion(buddy, fusion_model, dataloader, log_interval=2,
+                 optim_name="fusion", measurement_init=False, init_state_noise=0.2,
+                 one_loss=True, know_image_blackout=False, nll=False):
+
+    for batch_idx, batch in enumerate(dataloader):
+        # Transfer to GPU and pull out batch data
+        batch_gpu = utils.to_device(batch, buddy._device)
+        _, batch_states, batch_obs, batch_controls = batch_gpu
+        # N = batch size
+        N, timesteps, control_dim = batch_controls.shape
+        N, timesteps, state_dim = batch_states.shape
+        assert batch_controls.shape == (N, timesteps, control_dim)
+
+        state = batch_states[:, 0, :]
+        state_sigma = torch.eye(state.shape[-1], device=buddy._device) * init_state_noise
+        state_sigma = state_sigma.unsqueeze(0).repeat(N, 1, 1)
+
+        if measurement_init:
+            state, state_sigma = fusion_model.measurement_only(
+                utils.DictIterator(batch_obs)[:, 0, :], state, know_image_blackout)
+        else:
+            dist = torch.distributions.Normal(
+                torch.tensor([0.]), torch.ones(state.shape)*init_state_noise)
+            noise = dist.sample().to(state.device)
+            state += noise
+
+        losses_image = []
+        losses_force = []
+        losses_fused = []
+        losses_nll = []
+        losses_total = []
+
+        for t in range(1, timesteps-1):
+            prev_state = state
+            prev_state_sigma = state_sigma
+
+            # print("input: ", state[0], state_sigma[0])
+
+            state, state_sigma, force_state, image_state = fusion_model.forward(
+                prev_state,
+                prev_state_sigma,
+                utils.DictIterator(batch_obs)[:, t, :],
+                batch_controls[:, t, :],
+                know_image_blackout= know_image_blackout,
+            )
+
+            loss_image = torch.mean((image_state - batch_states[:, t, :]) ** 2)
+            loss_force = torch.mean((force_state - batch_states[:, t, :]) ** 2)
+            loss_fused = torch.mean((state - batch_states[:, t, :]) ** 2)
+
+            losses_force.append(loss_force.item())
+            losses_image.append(loss_image.item())
+            losses_fused.append(loss_fused.item())
+
+            if nll:
+                loss_nll = torch.mean(-utility.gaussian_log_likelihood(state, batch_states[:, t, :], state_sigma))
+                losses_nll.append(loss_nll)
+                losses_total.append(loss_nll)
+
+            elif one_loss:
+                losses_total.append(loss_fused)
+            else: 
+                losses_total.append(loss_image + loss_force + loss_fused)
+
+        loss = torch.mean(torch.stack(losses_total))
+
+        # print("loss: ", loss)
+        buddy.minimize(
+            loss,
+            optimizer_name= optim_name,
+            checkpoint_interval=10000)
+
+        if buddy.optimizer_steps % log_interval == 0:
+            with buddy.log_scope("fusion"):
+                buddy.log("Training loss",  loss.item())
+                buddy.log("Image loss",  np.mean(np.array(losses_image)))
+                buddy.log("Force loss",  np.mean(np.array(losses_force)))
+                buddy.log("Fused loss",  np.mean(np.array(losses_fused)))
+                buddy.log_model_grad_hist()
+                buddy.log_model_weights_hist()
+
+
 def rollout_kf(kf_model, trajectories, start_time=0, max_timesteps=300,
                noisy_dynamics=True, true_initial=True, init_state_noise=0.0,
                save_data_name=None):

@@ -23,13 +23,136 @@ class KalmanFusionModel(nn.Module):
         self.fusion_type = fusion_type
         self.old_weighting = old_weighting
 
+        self.state_dim = self.image_model.measurement_model.state_dim
+
         self.safety = False
         self.know_image_blackout = know_image_blackout
 
         assert self.fusion_type in ["weighted", "poe", "sigma"]
 
+    def measurement_only(self, observations, states_prev):
+        force_beta, image_beta = self.weight_model.forward(observations)
+        force_state, force_state_sigma = self.force_model.measurement_model.forward(observations, states_prev)
+        image_state, image_state_sigma = self.image_model.measurement_model.forward(observations, states_prev)
+
+        state, state_sigma, _ = self.get_weighted_states(observations, force_state, force_state_sigma,
+                                 image_state, image_state_sigma)
+
+        return state, state_sigma
+
+    def get_weighted_states(self, observations, force_state,
+                            force_state_sigma, image_state, image_state_sigma):
+
+        N, state_dim = force_state.shape
+
+        force_beta, image_beta = self.weight_model.forward(observations)
+        # print(force_beta.shape)
+        # print(image_beta.shape)
+        device = force_beta.device
+        if self.know_image_blackout:
+            blackout_indices = torch.sum(torch.abs(
+                observations['image'].reshape((N, -1))), dim=1) < 1e-3
+
+            mask_shape = (N, 1)
+            mask = torch.ones(mask_shape, device=device)
+            mask[blackout_indices] = 0
+
+            image_beta_new = torch.zeros(mask_shape, device=device)
+            if self.fusion_type == "poe":
+                image_beta_new[blackout_indices] = 1 - 1e-9
+                image_beta = image_beta_new + mask * image_beta
+
+                force_beta_new = torch.zeros(mask_shape, device=device)
+                force_beta_new[blackout_indices] = 1e-9
+                force_beta = force_beta_new + mask * force_beta
+            else:
+                image_beta_new[blackout_indices] = 1e-9
+                image_beta = image_beta_new + mask * image_beta
+
+                force_beta_new = torch.zeros(mask_shape, device=device)
+                force_beta_new[blackout_indices] = 1. - 1e-9
+                force_beta = force_beta_new + mask * force_beta
+
+        # if self.old_weighting:
+        #     assert force_beta.shape == states_prev.shape
+        # else:
+        #     assert force_beta.shape[-1] == states_prev.shape[-1] + 1
+
+        weights = torch.stack([image_beta[:, 0:state_dim], force_beta[:, 0:state_dim]])
+        weights_for_sigma = [torch.diag_embed(image_beta[:, 0:state_dim], offset=0, dim1=-2, dim2=-1),
+                             torch.diag_embed(force_beta[:, 0:state_dim], offset=0, dim1=-2, dim2=-1)]
+        # todo: this only works for state dim =2
+        if not self.old_weighting:
+            weights_for_sigma[0][:, 0, 1] = image_beta[:, -1]
+            weights_for_sigma[0][:, 1, 0] = image_beta[:, -1]
+
+            weights_for_sigma[1][:, 0, 1] = force_beta[:, -1]
+            weights_for_sigma[1][:, 1, 0] = force_beta[:, -1]
+
+        weights_for_sigma = torch.stack(weights_for_sigma)
+        states_pred = torch.stack([image_state, force_state])
+        state_sigma_pred = torch.stack(
+            [image_state_sigma, force_state_sigma])
+
+        if self.fusion_type == "weighted":
+            state = self.weighted_average(states_pred, weights)
+            state_sigma = self.weighted_average(
+                state_sigma_pred, weights_for_sigma)
+        elif self.fusion_type == "poe":
+            # print(weights.shape)
+            # print(states_pred.shape)
+            state = self.product_of_experts(states_pred, weights)
+            state_sigma = self.weighted_average(
+                state_sigma_pred, weights_for_sigma)
+        elif self.fusion_type == "sigma":
+
+            #todo: is it necessary to blackout diagonals for new sigma?
+
+            image_mat = image_state_sigma.clone()
+            image_mat[:, 1, 0] = 0
+            image_mat[:, 0, 1] = 0
+            image_weight = 1.0 / (utility.diag_to_vector(image_mat) + 1e-9)
+
+            force_mat = force_state_sigma.clone()
+            force_mat[:, 1, 0] = 0
+            force_mat[:, 0, 1] = 0
+            force_weight = 1.0 / (utility.diag_to_vector(force_mat) + 1e-9)
+
+            try:
+                state_sigma = torch.inverse(
+                    torch.inverse(image_mat) +
+                    torch.inverse(force_mat))
+            except:
+                print("need safety")
+                safety = 1e-6
+                state_sigma = torch.inverse(
+                    torch.inverse(image_mat + safety) +
+                    torch.inverse(force_mat + safety) + safety)
+
+            if self.know_image_blackout:
+                blackout_indices = torch.sum(torch.abs(
+                    observations['image'].reshape((N, -1))), dim=1) < 1e-3
+
+                mask_shape = (N, 1)
+                mask = torch.ones(mask_shape, device=device)
+                mask[blackout_indices] = 0
+
+                image_mat_new = torch.zeros(mask_shape, device=device)
+                image_mat_new[blackout_indices] = 1e-9
+
+                force_beta_new = torch.zeros(mask_shape, device=device)
+                force_beta_new[blackout_indices] = 1. - 1e-9
+                force_weight = force_beta_new + mask * force_weight
+
+                state_sigma[blackout_indices] = force_state_sigma[blackout_indices]
+
+            weights = torch.stack([image_weight, force_weight])
+            state = self.weighted_average(states_pred, weights)
+
+            return state, state_sigma, weights
+
     def forward(self, states_prev, state_sigma_prev, observations, controls,
-                obs_only=False, know_image_blackout=False, return_all=False):
+                return_all=False):
 
             N, state_dim = states_prev.shape
 
@@ -40,7 +163,6 @@ class KalmanFusionModel(nn.Module):
                 observations,
                 controls,
                 noisy_dynamics=True,
-                obs_only=obs_only
             )
 
             force_state, force_state_sigma = self.force_model.forward(
@@ -49,118 +171,14 @@ class KalmanFusionModel(nn.Module):
                 observations,
                 controls,
                 noisy_dynamics=True,
-                obs_only=obs_only
             )
 
-            force_beta, image_beta = self.weight_model.forward(observations)
-            # print(force_beta.shape)
-            # print(image_beta.shape)
-            device = force_beta.device
-            if know_image_blackout or self.know_image_blackout:
-                blackout_indices = torch.sum(torch.abs(
-                    observations['image'].reshape((N, -1))), dim=1) < 1e-3
-
-                mask_shape = (N, 1)
-                mask = torch.ones(mask_shape, device=device)
-                mask[blackout_indices] = 0
-
-                image_beta_new = torch.zeros(mask_shape, device=device)
-                if self.fusion_type == "poe":
-                    image_beta_new[blackout_indices] = 1 - 1e-9
-                    image_beta = image_beta_new + mask * image_beta
-
-                    force_beta_new = torch.zeros(mask_shape, device=device)
-                    force_beta_new[blackout_indices] = 1e-9
-                    force_beta = force_beta_new + mask * force_beta
-                else:
-                    image_beta_new[blackout_indices] = 1e-9
-                    image_beta = image_beta_new + mask * image_beta
-
-                    force_beta_new = torch.zeros(mask_shape, device=device)
-                    force_beta_new[blackout_indices] = 1. - 1e-9
-                    force_beta = force_beta_new + mask * force_beta
-
-            if self.old_weighting:
-                assert force_beta.shape == states_prev.shape
-            else:
-                assert force_beta.shape[-1] == states_prev.shape[-1] + 1
-
-            weights = torch.stack([image_beta[:,0:state_dim], force_beta[:, 0:state_dim]])
-            weights_for_sigma = [torch.diag_embed(image_beta[:, 0:state_dim], offset=0, dim1=-2, dim2=-1), 
-                                torch.diag_embed(force_beta[:, 0:state_dim], offset=0, dim1=-2, dim2=-1)]
-            #todo: this only works for state dim =2
-            if not self.old_weighting:
-                weights_for_sigma[0][:, 0, 1] = image_beta[:, -1]
-                weights_for_sigma[0][:, 1, 0] = image_beta[:, -1]
-
-                weights_for_sigma[1][:, 0, 1] = force_beta[:, -1]
-                weights_for_sigma[1][:, 1, 0] = force_beta[:, -1]
-
-            weights_for_sigma = torch.stack(weights_for_sigma)
-            states_pred = torch.stack([image_state, force_state])
-            state_sigma_pred = torch.stack(
-                [image_state_sigma, force_state_sigma])
-
-            if self.fusion_type == "weighted":
-                state = self.weighted_average(states_pred, weights)
-                state_sigma = self.weighted_average(
-                    state_sigma_pred, weights_for_sigma)
-            elif self.fusion_type == "poe":
-                # print(weights.shape)
-                # print(states_pred.shape)
-                state = self.product_of_experts(states_pred, weights)
-                state_sigma = self.weighted_average(
-                    state_sigma_pred, weights_for_sigma)
-            elif self.fusion_type == "sigma":
-                image_mat = image_state_sigma.clone()
-                image_mat[:, 1, 0] = 0
-                image_mat[:, 0, 1] = 0
-                image_weight = 1.0 / (utility.diag_to_vector(image_mat) + 1e-9)
-
-                force_mat = force_state_sigma.clone()
-                force_mat[:, 1, 0] = 0
-                force_mat[:, 0, 1] = 0
-                force_weight = 1.0 / (utility.diag_to_vector(force_mat) + 1e-9)
-
-
-
-                # NUMERICAL INSTABILITY
-                # state_sigma = torch.inverse(
-                #     torch.inverse(image_mat + 1e-3) +
-                #     torch.inverse(force_mat + 1e-3) + 1e-3)
-                try:
-                    state_sigma = torch.inverse(
-                        torch.inverse(image_mat ) +
-                        torch.inverse(force_mat ) )
-                except:
-                    print("need safety")
-                    safety = 1e-6
-                    state_sigma = torch.inverse(
-                        torch.inverse(image_mat + safety) +
-                        torch.inverse(force_mat + safety) + safety)
-
-                if know_image_blackout or self.know_image_blackout:
-                    blackout_indices = torch.sum(torch.abs(
-                        observations['image'].reshape((N, -1))), dim=1) < 1e-3
-
-                    mask_shape = (N, 1)
-                    mask = torch.ones(mask_shape, device=device)
-                    mask[blackout_indices] = 0
-
-                    image_mat_new = torch.zeros(mask_shape, device=device)
-                    image_mat_new[blackout_indices] = 1e-9
-
-
-                    force_beta_new = torch.zeros(mask_shape, device=device)
-                    force_beta_new[blackout_indices] = 1. - 1e-9
-                    force_weight = force_beta_new + mask * force_weight
-
-                    state_sigma[blackout_indices] = force_state_sigma[blackout_indices]
-
-
-                weights = torch.stack([image_weight, force_weight])
-                state = self.weighted_average(states_pred, weights)
-
+            state, state_sigma, weights = \
+                self.get_weighted_states(observations,
+                                         force_state,
+                                         force_state_sigma,
+                                         image_state,
+                                         image_state_sigma,)
 
             if return_all:
                 # return state, state_sigma,force_stat, image_state,
