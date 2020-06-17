@@ -65,10 +65,12 @@ if __name__ == '__main__':
         'ekf_nll': args.ekf_nll,
         'learnable_Q': args.learnable_Q
     }
+
+    print("Creating model...")
     measurement = PandaEKFMeasurementModel(units=args.hidden_units)
     dynamics = PandaDynamicsModel(use_particles=False, learnable_Q=args.learnable_Q)
     ekf = KalmanFilterNetwork(dynamics, measurement, R=args.set_r)
-    print("Creating model...")
+
     buddy = fannypack.utils.Buddy(experiment_name,
                                   ekf,
                                   optimizer_names=["ekf", "dynamics", "measurement"],
@@ -76,11 +78,8 @@ if __name__ == '__main__':
 
     if args.load_checkpoint is not None:
         buddy.load_checkpoint(path = args.load_checkpoint)
+
     print("Creating dataset...")
-    # dataset_full = panda_datasets.PandaParticleFilterDataset(
-    #     'data/gentle_push_10.hdf5',
-    #     subsequence_length=16,
-    #     **dataset_args)
 
     if args.omnipush:
         e2e_trainset = omnipush_datasets.OmnipushParticleFilterDataset(
@@ -90,13 +89,11 @@ if __name__ == '__main__':
         "simpler/train3.hdf5",
         "simpler/train4.hdf5",
         "simpler/train5.hdf5",
-
         subsequence_length=16,
         particle_count=1,
         particle_stddev=(.03, .03),
         **dataset_args
         )
-
         dataset_measurement = omnipush_datasets.OmnipushMeasurementDataset(
             "simpler/train0.hdf5",
             "simpler/train1.hdf5",
@@ -116,8 +113,6 @@ if __name__ == '__main__':
             "simpler/train3.hdf5",
             "simpler/train4.hdf5",
             "simpler/train5.hdf5",
-
-
             subsequence_length=32,
             **dataset_args
         )
@@ -129,9 +124,9 @@ if __name__ == '__main__':
             "simpler/train3.hdf5",
             "simpler/train4.hdf5",
             "simpler/train5.hdf5",
-
             subsequence_length=16,
             **dataset_args)
+
     else:
         e2e_trainset = panda_datasets.PandaParticleFilterDataset(
             "data/gentle_push_{}.hdf5".format(args.data_size),
@@ -158,25 +153,29 @@ if __name__ == '__main__':
             'data/gentle_push_{}.hdf5'.format(args.data_size),
             subsequence_length=16,
             **dataset_args)
+
     if args.train == "all":
 
+        #load dynamics data
         dataloader_dynamics = torch.utils.data.DataLoader(
             dynamics_recurrent_trainset, batch_size=args.batch, shuffle=True, num_workers=2, drop_last=True)
 
+        # TRAIN DYNAMICS MODEL
         for i in range(args.pretrain):
             print("Training dynamics epoch", i)
             training.train_dynamics_recurrent(buddy, ekf, dataloader_dynamics, optim_name="dynamics")
-            print()
 
         buddy.save_checkpoint("phase_0_dynamics_pretrain")
 
+        #load measurement data
         measurement_trainset_loader = torch.utils.data.DataLoader(
             dataset_measurement,
             batch_size=args.batch*2,
             shuffle=True,
             num_workers=8)
 
-        for i in range(int(args.pretrain)):
+        # TRAIN MEASUREMENT MODEL
+        for i in range(int(args.pretrain/2)):
             print("Training measurement epoch", i)
             training.train_measurement(buddy, ekf, measurement_trainset_loader,
                                        log_interval=20, optim_name="measurement", nll=args.measurement_nll)
@@ -184,8 +183,10 @@ if __name__ == '__main__':
 
         buddy.save_checkpoint("phase_2_measurement_pretrain")
 
+    #load e2e data
     e2e_trainset_loader = torch.utils.data.DataLoader(e2e_trainset, batch_size=args.batch, shuffle=True, num_workers=2)
 
+    #TRAIN E2D EKF
     for i in range(args.epochs):
         obs_only=False
         print("Training ekf epoch", i)
