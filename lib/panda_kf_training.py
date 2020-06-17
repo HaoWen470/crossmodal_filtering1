@@ -105,10 +105,12 @@ def train_dynamics_recurrent(
                 if direction_losses:
                     buddy.log("Direction loss",
                               torch.mean(torch.tensor(direction_losses)))
-
+                buddy.log_model_grad_hist()
+                buddy.log_model_weights_hist()
 
 def train_measurement(buddy, kf_model, dataloader, log_interval=10,
-                      optim_name="ekf_measurement", checkpoint_interval=500):
+                      optim_name="ekf_measurement", checkpoint_interval=500,
+                      nll=False):
     losses = []
 
     for batch_idx, batch in enumerate(dataloader):
@@ -116,6 +118,10 @@ def train_measurement(buddy, kf_model, dataloader, log_interval=10,
         #         states = states[:,0,:]
         state_update, R = kf_model.measurement_model(observation, noisy_state)
         loss = F.mse_loss(state_update, state)
+        if nll:
+            loss = -utility.gaussian_log_likelihood(state_update, state, R)
+            loss = torch.mean(loss)
+            # import ipdb; ipdb.set_trace()
         buddy.minimize(loss,
                        optimizer_name= optim_name,
                        checkpoint_interval=checkpoint_interval)
@@ -126,12 +132,13 @@ def train_measurement(buddy, kf_model, dataloader, log_interval=10,
             buddy.log("label_std", fannypack.utils.to_numpy(state).std())
             buddy.log("pred_mean", fannypack.utils.to_numpy(state_update).mean())
             buddy.log("pred_std", fannypack.utils.to_numpy(state_update).std())
-
+            buddy.log_model_grad_hist()
+            buddy.log_model_weights_hist()
     print("Epoch loss:", np.mean(losses))
 
 def train_fusion(buddy, fusion_model, dataloader, log_interval=2,
                  optim_name="fusion", obs_only=False, init_state_noise=0.2, 
-                 one_loss=True, know_image_blackout=False):
+                 one_loss=True, know_image_blackout=False, nll=False):
     for batch_idx, batch in enumerate(dataloader):
         # Transfer to GPU and pull out batch data
         batch_gpu = utils.to_device(batch, buddy._device)
@@ -162,7 +169,9 @@ def train_fusion(buddy, fusion_model, dataloader, log_interval=2,
         losses_image = []
         losses_force = []
         losses_fused = []
+        losses_nll = []
         losses_total = []
+
 
         for t in range(1, timesteps-1):
             prev_state = state
@@ -186,10 +195,18 @@ def train_fusion(buddy, fusion_model, dataloader, log_interval=2,
             losses_image.append(loss_image.item())
             losses_fused.append(loss_fused.item())
 
-            if one_loss: 
+            if nll:
+
+                loss_nll = torch.mean(-utility.gaussian_log_likelihood(state, batch_states[:, t, :], state_sigma))
+                losses_nll.append(loss_nll)
+                losses_total.append(loss_nll)
+
+            elif one_loss:
                 losses_total.append(loss_fused)
             else: 
                 losses_total.append(loss_image + loss_force +loss_fused)
+
+
 
         loss = torch.mean(torch.stack(losses_total))
 
@@ -213,7 +230,7 @@ def train_e2e(buddy, ekf_model, dataloader,
               log_interval=2, optim_name="ekf",
               obs_only=False,
               checkpoint_interval = 1000,
-              init_state_noise=0.2,
+              init_state_noise=0.2, nll=False
               ):
     # Train for 1 epoch
     for batch_idx, batch in enumerate(dataloader):
@@ -260,7 +277,12 @@ def train_e2e(buddy, ekf_model, dataloader,
             )
 
             assert state.shape == batch_states[:, t, :].shape
-            loss = torch.mean((state - batch_states[:, t, :]) ** 2)
+            if nll:
+                # import ipdb;ipdb.set_trace()
+                loss = -utility.gaussian_log_likelihood(state, batch_states[:, t, :], state_sigma)
+                loss = torch.mean(loss)
+            else:
+                loss = torch.mean((state - batch_states[:, t, :]) ** 2)
             losses.append(loss)
 
         loss = torch.mean(torch.stack(losses))
@@ -383,6 +405,14 @@ def rollout_kf(kf_model, trajectories, start_time=0, max_timesteps=300,
     predicted_states = np.array(predicted_states)
     actual_states = np.array(actual_states)
     predicted_sigmas = np.array(predicted_sigmas)
+
+    rmse_x = np.sqrt(np.mean(
+        (predicted_states[:, start_time:, 0] - actual_states[:, start_time:, 0]) ** 2))
+
+    rmse_y = np.sqrt(np.mean(
+        (predicted_states[:, start_time :, 1] - actual_states[:, start_time:, 1]) ** 2))
+
+    print("rsme x: \n{} \n y:\n{}".format(rmse_x, rmse_y))
 
     if save_data_name is not None:
         import h5py

@@ -36,6 +36,9 @@ if __name__ == '__main__':
     parser.add_argument("--load_checkpoint", type=str, default=None)
     parser.add_argument("--set_r", type=float, default=None)
     parser.add_argument("--no_proprio", action="store_true")
+    parser.add_argument("--measurement_nll", action="store_true")
+    parser.add_argument("--ekf_nll", action="store_true")
+    parser.add_argument("--learnable_Q", action="store_true")
 
 
     args = parser.parse_args()
@@ -58,10 +61,12 @@ if __name__ == '__main__':
         'sequential_image_rate': args.sequential_image,
         'start_timestep': args.start_timestep,
         'set_r': args.set_r,
-
+        'measurement_nll': args.measurement_nll,
+        'ekf_nll': args.ekf_nll,
+        'learnable_Q': args.learnable_Q
     }
     measurement = PandaEKFMeasurementModel(units=args.hidden_units)
-    dynamics = PandaDynamicsModel(use_particles=False)
+    dynamics = PandaDynamicsModel(use_particles=False, learnable_Q=args.learnable_Q)
     ekf = KalmanFilterNetwork(dynamics, measurement, R=args.set_r)
     print("Creating model...")
     buddy = fannypack.utils.Buddy(experiment_name,
@@ -174,7 +179,8 @@ if __name__ == '__main__':
 
         for i in range(int(args.pretrain/2)):
             print("Training measurement epoch", i)
-            training.train_measurement(buddy, ekf, measurement_trainset_loader, log_interval=20, optim_name="measurement")
+            training.train_measurement(buddy, ekf, measurement_trainset_loader,
+                                       log_interval=20, optim_name="measurement", nll=args.measurement_nll)
             print()
 
         buddy.save_checkpoint("phase_2_measurement_pretrain")
@@ -185,7 +191,8 @@ if __name__ == '__main__':
         obs_only=False
         print("Training ekf epoch", i)
         training.train_e2e(buddy, ekf, e2e_trainset_loader,
-                           optim_name="ekf", obs_only=obs_only, init_state_noise=args.init_state_noise)
+                           optim_name="ekf", obs_only=obs_only,
+                           init_state_noise=args.init_state_noise, nll=args.ekf_nll)
 
     buddy.save_checkpoint("phase_3_e2e")
     buddy.save_checkpoint()

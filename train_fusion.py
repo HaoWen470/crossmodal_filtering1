@@ -39,6 +39,10 @@ if __name__ == '__main__':
     parser.add_argument("--start_timestep", type=int, default=0)
     parser.add_argument("--old_weighting", action="store_true")
     parser.add_argument("--no_proprio", action="store_true")
+    parser.add_argument("--measurement_nll", action="store_true")
+    parser.add_argument("--ekf_null", action="store_true")
+    parser.add_argument("--fusion_nll", action="store_true")
+    parser.add_argument("--learnable_Q", action="store_true")
 
     args = parser.parse_args()
 
@@ -61,16 +65,20 @@ if __name__ == '__main__':
         'many loss': args.many_loss,
         'sequential_image_rate': args.sequential_image,
         'start_timestep': args.start_timestep,
+        'measurement_nll': args.measurement_nll,
+        'ekf_nll': args.ekf_nll,
+        'fusion_nll': args.measurement_nll,
+        'learnable_Q': args.learnable_Q,
 
     }
     # image_modality_model
     image_measurement = PandaEKFMeasurementModel(missing_modalities=['gripper_sensors'], units=args.hidden_units)
-    image_dynamics = PandaDynamicsModel(use_particles=False)
+    image_dynamics = PandaDynamicsModel(use_particles=False, learnable_Q=args.learnable_Q)
     image_model = KalmanFilterNetwork(image_dynamics, image_measurement)
 
     # force_modality_model
     force_measurement = PandaEKFMeasurementModel(missing_modalities=['image'], units=args.hidden_units)
-    force_dynamics = PandaDynamicsModel(use_particles=False)
+    force_dynamics = PandaDynamicsModel(use_particles=False, learnable_Q=args.learnable_Q)
     force_model = KalmanFilterNetwork(force_dynamics, force_measurement)
 
     if args.old_weighting:
@@ -227,10 +235,12 @@ if __name__ == '__main__':
             print("Training measurement epoch", i)
             training.train_measurement(buddy, image_model, measurement_trainset_loader,
                                        log_interval=20, optim_name="im_meas",
-                                       checkpoint_interval= 10000)
+                                       checkpoint_interval= 10000,
+                                       nll=args.measurement_nll)
             training.train_measurement(buddy, force_model, measurement_trainset_loader,
                                        log_interval=20, optim_name="force_meas",
-                                       checkpoint_interval= 10000)
+                                       checkpoint_interval= 10000,
+                                       nll=args.measurement_nll)
             print()
 
         buddy.save_checkpoint("phase_2_measurement_pretrain")
@@ -250,8 +260,12 @@ if __name__ == '__main__':
             print("Training ekf epoch", i)
             obs_only=False
             training.train_e2e(buddy, force_model,
-                               e2e_trainset_loader, optim_name="force_ekf", obs_only=obs_only)
-            training.train_e2e(buddy, image_model, e2e_trainset_loader, optim_name="im_ekf")
+                               e2e_trainset_loader,
+                               optim_name="force_ekf",
+                               obs_only=obs_only,
+                               nll=args.ekf_nll)
+            training.train_e2e(buddy, image_model, e2e_trainset_loader, optim_name="im_ekf",
+                               nll=args.ekf_nll)
 
         buddy.save_checkpoint("phase_3_e2e")
         buddy.save_checkpoint()
@@ -269,6 +283,7 @@ if __name__ == '__main__':
         training.train_fusion(buddy, fusion_model, e2e_trainset_loader,
                               optim_name="fusion", obs_only=obs_only, one_loss= not args.many_loss,
                               init_state_noise=args.init_state_noise,
-                              know_image_blackout=know_image_blackout)
+                              know_image_blackout=know_image_blackout,
+                              nll=args.fusion_nll)
         buddy.save_checkpoint()
     buddy.save_checkpoint("phase_4_fusion")
