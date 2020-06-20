@@ -39,7 +39,6 @@ if __name__ == '__main__':
     parser.add_argument("--measurement_nll", action="store_true")
     parser.add_argument("--ekf_nll", action="store_true")
     parser.add_argument("--learnable_Q", action="store_true")
-    parser.add_argument("--obs_only", action="store_true")
 
 
     args = parser.parse_args()
@@ -193,7 +192,6 @@ if __name__ == '__main__':
 
     #TRAIN E2D EKF
     for i in range(args.epochs):
-        obs_only=False
         print("Training ekf epoch", i)
         training.train_e2e(buddy, ekf, e2e_trainset_loader,
                            optim_name="ekf",

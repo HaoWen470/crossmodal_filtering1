@@ -272,11 +272,9 @@ if __name__ == '__main__':
     if args.train == "all" or args.train == "ekf":
         for i in range(args.pretrain):
             print("Training ekf epoch", i)
-            obs_only=False
             training.train_e2e(buddy, force_model,
                                e2e_trainset_loader,
                                optim_name="force_ekf",
-                               obs_only=obs_only,
                                nll=args.ekf_nll)
             training.train_e2e(buddy, image_model, e2e_trainset_loader, optim_name="im_ekf",
                                nll=args.ekf_nll)
@@ -290,7 +288,7 @@ if __name__ == '__main__':
         print("Training fusion epoch", i)
 
         training.train_fusion(buddy, fusion_model, e2e_trainset_loader,
-                              optim_name="fusion", obs_only=obs_only, one_loss= not args.many_loss,
+                              optim_name="fusion", one_loss= not args.many_loss,
                               init_state_noise=args.init_state_noise,
                               nll=args.fusion_nll)
         buddy.save_checkpoint()
