@@ -37,9 +37,9 @@ if __name__ == '__main__':
     parser.add_argument("--set_r", type=float, default=None)
     parser.add_argument("--no_proprio", action="store_true")
     parser.add_argument("--measurement_nll", action="store_true")
-    parser.add_argument("--ekf_nll", action="store_true")
+    parser.add_argument("--ekf_loss", choices=['mse', 'nll', 'mixed'])
     parser.add_argument("--learnable_Q", action="store_true")
-
+    parser.add_argument("--learnable_Q_dyn", action="store_true")
 
     args = parser.parse_args()
 
@@ -62,16 +62,17 @@ if __name__ == '__main__':
         'start_timestep': args.start_timestep,
         'set_r': args.set_r,
         'measurement_nll': args.measurement_nll,
-        'ekf_nll': args.ekf_nll,
+        'ekf_loss': args.ekf_loss,
         'learnable_Q': args.learnable_Q,
-        "obs_only": args.obs_only
+        "obs_only": args.obs_only,
+        'learnable_Q_dynamics': args.learnable_Q_dyn
     }
 
 
 
     print("Creating model...")
     measurement = PandaEKFMeasurementModel(units=args.hidden_units, use_states= not args.obs_only)
-    dynamics = PandaDynamicsModel(use_particles=False, learnable_Q=args.learnable_Q)
+    dynamics = PandaDynamicsModel(use_particles=False, learnable_Q=args.learnable_Q or args.learnable_Q_dyn)
     ekf = KalmanFilterNetwork(dynamics, measurement, R=args.set_r)
 
     buddy = fannypack.utils.Buddy(experiment_name,
@@ -190,13 +191,18 @@ if __name__ == '__main__':
     #load e2e data
     e2e_trainset_loader = torch.utils.data.DataLoader(e2e_trainset, batch_size=args.batch, shuffle=True, num_workers=2)
 
+    #turn off dynamics Q
+
+    if not args.learnable_Q:
+        ekf.dynamics_model.Q.requires_grad = False
+
     #TRAIN E2D EKF
     for i in range(args.epochs):
         print("Training ekf epoch", i)
         training.train_e2e(buddy, ekf, e2e_trainset_loader,
                            optim_name="ekf",
                            init_state_noise=args.init_state_noise,
-                           nll=args.ekf_nll)
+                           loss=args.ekf_nll)
 
     buddy.save_checkpoint("phase_3_e2e")
     buddy.save_checkpoint()

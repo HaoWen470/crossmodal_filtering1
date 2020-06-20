@@ -111,6 +111,7 @@ def train_dynamics_recurrent(
 def train_measurement(buddy, kf_model, dataloader, log_interval=10,
                       optim_name="ekf_measurement", checkpoint_interval=500,
                       nll=False):
+
     losses = []
 
     for batch_idx, batch in enumerate(dataloader):
@@ -144,7 +145,7 @@ def train_e2e(buddy, ekf_model, dataloader,
               log_interval=2, optim_name="ekf",
               measurement_init=False,
               checkpoint_interval=1000,
-              init_state_noise=0.2, nll=False
+              init_state_noise=0.2, loss="mse"
               ):
     # Train for 1 epoch
     for batch_idx, batch in enumerate(dataloader):
@@ -186,12 +187,20 @@ def train_e2e(buddy, ekf_model, dataloader,
             )
 
             assert state.shape == batch_states[:, t, :].shape
-            if nll:
+
+            nll = -utility.gaussian_log_likelihood(state, batch_states[:, t, :], state_sigma)
+            nll = torch.mean(nll)
+
+            mse = torch.mean((state - batch_states[:, t, :]) ** 2)
+
+            if loss =='nll':
                 # import ipdb;ipdb.set_trace()
-                loss = -utility.gaussian_log_likelihood(state, batch_states[:, t, :], state_sigma)
-                loss = torch.mean(loss)
+                loss = nll
+            elif loss == 'mse':
+                loss = mse
             else:
-                loss = torch.mean((state - batch_states[:, t, :]) ** 2)
+                nll = nll + mse
+
             losses.append(loss)
 
         loss = torch.mean(torch.stack(losses))
@@ -209,7 +218,7 @@ def train_e2e(buddy, ekf_model, dataloader,
 def train_fusion(buddy, fusion_model, dataloader, log_interval=2,
                  optim_name="fusion", measurement_init=False, init_state_noise=0.2,
                  one_loss=True, know_image_blackout=False, nll=False):
-
+    # todo: change loss to selection/mixed
     for batch_idx, batch in enumerate(dataloader):
         # Transfer to GPU and pull out batch data
         batch_gpu = utils.to_device(batch, buddy._device)
