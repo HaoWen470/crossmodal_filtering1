@@ -374,56 +374,31 @@ class PandaEKFMeasurementModel(dpf.MeasurementModel):
                 assert missing_modalities in self.modalities
                 self.modalities -= set([missing_modalities])
 
-        if use_spatial_softmax:
-            self.observation_image_layers = nn.Sequential(
-                nn.Conv2d(
-                    in_channels=1,
-                    out_channels=32,
-                    kernel_size=5,
-                    padding=2),
-                nn.ReLU(inplace=True),
-                resblocks.Conv2d(channels=32, kernel_size=3),
-                nn.Conv2d(
-                    in_channels=32,
-                    out_channels=16,
-                    kernel_size=3,
-                    padding=1),
-                nn.ReLU(inplace=True),
-                nn.Conv2d(
-                    in_channels=16,
-                    out_channels=16,
-                    kernel_size=3,
-                    padding=1),
-                spatial_softmax.SpatialSoftmax(32, 32, 16),
-                nn.Linear(16 * 2, units),
-                nn.ReLU(inplace=True),
-                resblocks.Linear(units),
-            )
-        else:
-            self.observation_image_layers = nn.Sequential(
-                nn.Conv2d(
-                    in_channels=1,
-                    out_channels=32,
-                    kernel_size=5,
-                    padding=2),
-                nn.ReLU(inplace=True),
-                resblocks.Conv2d(channels=32, kernel_size=3),
-                nn.Conv2d(
-                    in_channels=32,
-                    out_channels=16,
-                    kernel_size=3,
-                    padding=1),
-                nn.ReLU(inplace=True),
-                nn.Conv2d(
-                    in_channels=16,
-                    out_channels=2,
-                    kernel_size=3,
-                    padding=1),
-                nn.Flatten(),  # 32 * 32 * 8
-                nn.Linear(2 * 32 * 32, units),
-                nn.ReLU(inplace=True),
-                resblocks.Linear(units),
-            )
+
+        self.observation_image_layers = nn.Sequential(
+            nn.Conv2d(
+                in_channels=1,
+                out_channels=32,
+                kernel_size=5,
+                padding=2),
+            nn.ReLU(inplace=True),
+            resblocks.Conv2d(channels=32, kernel_size=3),
+            nn.Conv2d(
+                in_channels=32,
+                out_channels=16,
+                kernel_size=3,
+                padding=1),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(
+                in_channels=16,
+                out_channels=2,
+                kernel_size=3,
+                padding=1),
+            nn.Flatten(),  # 32 * 32 * 8
+            nn.Linear(2 * 32 * 32, units),
+            nn.ReLU(inplace=True),
+            resblocks.Linear(units),
+        )
 
         self.observation_pose_layers = nn.Sequential(
             nn.Linear(obs_pose_dim, units),

@@ -105,8 +105,8 @@ def train_dynamics_recurrent(
                 if direction_losses:
                     buddy.log("Direction loss",
                               torch.mean(torch.tensor(direction_losses)))
-                buddy.log_model_grad_hist()
-                buddy.log_model_weights_hist()
+                # buddy.log_model_grad_hist()
+                # buddy.log_model_weights_hist()
 
 def train_measurement(buddy, kf_model, dataloader, log_interval=10,
                       optim_name="ekf_measurement", checkpoint_interval=500,
@@ -126,14 +126,17 @@ def train_measurement(buddy, kf_model, dataloader, log_interval=10,
                        optimizer_name= optim_name,
                        checkpoint_interval=checkpoint_interval)
         losses.append(utils.to_numpy(loss))
-        with buddy.log_scope(optim_name):
-            buddy.log("loss", loss)
-            buddy.log("label_mean", fannypack.utils.to_numpy(state).mean())
-            buddy.log("label_std", fannypack.utils.to_numpy(state).std())
-            buddy.log("pred_mean", fannypack.utils.to_numpy(state_update).mean())
-            buddy.log("pred_std", fannypack.utils.to_numpy(state_update).std())
-            buddy.log_model_grad_hist()
-            buddy.log_model_weights_hist()
+
+        if buddy.optimizer_steps % log_interval == 0:
+
+            with buddy.log_scope(optim_name):
+                buddy.log("loss", loss)
+                buddy.log("label_mean", fannypack.utils.to_numpy(state).mean())
+                buddy.log("label_std", fannypack.utils.to_numpy(state).std())
+                buddy.log("pred_mean", fannypack.utils.to_numpy(state_update).mean())
+                buddy.log("pred_std", fannypack.utils.to_numpy(state_update).std())
+                # buddy.log_model_grad_hist()
+                # buddy.log_model_weights_hist()
     print("Epoch loss:", np.mean(losses))
 
 
@@ -200,8 +203,8 @@ def train_e2e(buddy, ekf_model, dataloader,
         if buddy.optimizer_steps % log_interval == 0:
             with buddy.log_scope(optim_name):
                 buddy.log("Training loss", loss.item())
-                buddy.log_model_grad_hist()
-                buddy.log_model_weights_hist()
+                # buddy.log_model_grad_hist()
+                # buddy.log_model_weights_hist()
 
 def train_fusion(buddy, fusion_model, dataloader, log_interval=2,
                  optim_name="fusion", measurement_init=False, init_state_noise=0.2,
@@ -281,8 +284,8 @@ def train_fusion(buddy, fusion_model, dataloader, log_interval=2,
                 buddy.log("Image loss",  np.mean(np.array(losses_image)))
                 buddy.log("Force loss",  np.mean(np.array(losses_force)))
                 buddy.log("Fused loss",  np.mean(np.array(losses_fused)))
-                buddy.log_model_grad_hist()
-                buddy.log_model_weights_hist()
+                # buddy.log_model_grad_hist()
+                # buddy.log_model_weights_hist()
 
 
 def rollout_kf(kf_model, trajectories, start_time=0, max_timesteps=300,

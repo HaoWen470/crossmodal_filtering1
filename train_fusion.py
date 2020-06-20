@@ -43,6 +43,7 @@ if __name__ == '__main__':
     parser.add_argument("--ekf_null", action="store_true")
     parser.add_argument("--fusion_nll", action="store_true")
     parser.add_argument("--learnable_Q", action="store_true")
+    parser.add_argument("--obs_only", action="store_true")
 
     args = parser.parse_args()
 
@@ -69,15 +70,19 @@ if __name__ == '__main__':
         'ekf_nll': args.ekf_nll,
         'fusion_nll': args.measurement_nll,
         'learnable_Q': args.learnable_Q,
+        'obs_only': args.obs_only,
 
     }
     # image_modality_model
-    image_measurement = PandaEKFMeasurementModel(missing_modalities=['gripper_sensors'], units=args.hidden_units)
+    image_measurement = PandaEKFMeasurementModel(missing_modalities=['gripper_sensors'],
+                                                 units=args.hidden_units, use_states= not args.obs_only)
     image_dynamics = PandaDynamicsModel(use_particles=False, learnable_Q=args.learnable_Q)
     image_model = KalmanFilterNetwork(image_dynamics, image_measurement)
 
     # force_modality_model
-    force_measurement = PandaEKFMeasurementModel(missing_modalities=['image'], units=args.hidden_units)
+    force_measurement = PandaEKFMeasurementModel(missing_modalities=['image'],
+                                                 units=args.hidden_units,
+                                                 use_states= not args.obs_only)
     force_dynamics = PandaDynamicsModel(use_particles=False, learnable_Q=args.learnable_Q)
     force_model = KalmanFilterNetwork(force_dynamics, force_measurement)
 

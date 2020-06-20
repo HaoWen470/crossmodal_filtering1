@@ -39,6 +39,7 @@ if __name__ == '__main__':
     parser.add_argument("--measurement_nll", action="store_true")
     parser.add_argument("--ekf_nll", action="store_true")
     parser.add_argument("--learnable_Q", action="store_true")
+    parser.add_argument("--obs_only", action="store_true")
 
 
     args = parser.parse_args()
@@ -63,11 +64,14 @@ if __name__ == '__main__':
         'set_r': args.set_r,
         'measurement_nll': args.measurement_nll,
         'ekf_nll': args.ekf_nll,
-        'learnable_Q': args.learnable_Q
+        'learnable_Q': args.learnable_Q,
+        "obs_only": args.obs_only
     }
 
+
+
     print("Creating model...")
-    measurement = PandaEKFMeasurementModel(units=args.hidden_units)
+    measurement = PandaEKFMeasurementModel(units=args.hidden_units, use_states= not args.obs_only)
     dynamics = PandaDynamicsModel(use_particles=False, learnable_Q=args.learnable_Q)
     ekf = KalmanFilterNetwork(dynamics, measurement, R=args.set_r)
 
@@ -75,6 +79,7 @@ if __name__ == '__main__':
                                   ekf,
                                   optimizer_names=["ekf", "dynamics", "measurement"],
                                   )
+    buddy.add_metadata(dataset_args)
 
     if args.load_checkpoint is not None:
         buddy.load_checkpoint(path = args.load_checkpoint)
