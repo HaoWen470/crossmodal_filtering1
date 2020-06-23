@@ -145,7 +145,7 @@ def train_e2e(buddy, ekf_model, dataloader,
               log_interval=2, optim_name="ekf",
               measurement_init=False,
               checkpoint_interval=1000,
-              init_state_noise=0.2, loss="mse"
+              init_state_noise=0.2, loss_type="mse"
               ):
     # Train for 1 epoch
     for batch_idx, batch in enumerate(dataloader):
@@ -193,13 +193,13 @@ def train_e2e(buddy, ekf_model, dataloader,
 
             mse = torch.mean((state - batch_states[:, t, :]) ** 2)
 
-            if loss =='nll':
+            if loss_type =='nll':
                 # import ipdb;ipdb.set_trace()
-                loss = nll
-            elif loss == 'mse':
+                loss_type = nll
+            elif loss_type == 'mse':
                 loss = mse
             else:
-                nll = nll + mse
+                loss = nll + mse
 
             losses.append(loss)
 
