@@ -202,7 +202,7 @@ if __name__ == '__main__':
         training.train_e2e(buddy, ekf, e2e_trainset_loader,
                            optim_name="ekf",
                            init_state_noise=args.init_state_noise,
-                           loss=args.ekf_nll)
+                           loss=args.ekf_loss)
 
     buddy.save_checkpoint("phase_3_e2e")
     buddy.save_checkpoint()
