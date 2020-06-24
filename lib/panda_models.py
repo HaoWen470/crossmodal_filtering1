@@ -115,17 +115,15 @@ class PandaDynamicsModel(dpf.DynamicsModel):
 
         self.units = units
 
-        self.Q = torch.from_numpy(
+        Q = torch.from_numpy(
             np.diag(np.array(self.state_noise_stddev))).float()
 
-        if learnable_Q:
-            self.Q.requires_grad = True
+        self.Q = torch.nn.Parameter(Q, requires_grad=learnable_Q)
+
 
     def forward(self, states_prev, controls, noisy=False):
         # states_prev:  (N, M, state_dim)
         # controls: (N, control_dim)
-        if self.Q.device != states_prev.device:
-            self.Q = self.Q.to(states_prev.device)
 
         self.jacobian = False
         if self.use_particles:
