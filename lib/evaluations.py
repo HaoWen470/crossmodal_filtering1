@@ -20,7 +20,8 @@ from lib.fusion import KalmanFusionModel
 def ekf_eval_experiment(experiment_name,
                         fusion_type=None,
                         omnipush=False,
-                        learnable_Q=False):
+                        learnable_Q=False,
+                       load_checkpoint=None):
     # Experiment configuration
 
     if fusion_type is None:
@@ -56,16 +57,20 @@ def ekf_eval_experiment(experiment_name,
 
     # Load eval data
     dataset_args = buddy.metadata
+    
+ 
 
     if omnipush:
         eval_trajectories = omnipush_datasets.load_trajectories(("simpler/train0.hdf5", 100), **dataset_args)
     else:
         eval_trajectories = panda_datasets.load_trajectories(("data/gentle_push_1000.hdf5", 100), **dataset_args)
-
-    buddy.load_checkpoint()
+    
+    if load_checkpoint is None: 
+        buddy.load_checkpoint()
+    else:
+        buddy.load_checkpoint(load_checkpoint)
 
     model.eval()
-
     if fusion_type is None:
         x = panda_kf_training.rollout_kf(
             model,

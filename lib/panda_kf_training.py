@@ -314,6 +314,9 @@ def rollout_kf(kf_model, trajectories, start_time=0, max_timesteps=300,
     end_time -=1
     actual_states = [states[start_time:end_time]
                      for states, _, _ in trajectories]
+    
+    contact_states = [action[start_time : end_time][:,-1]
+             for states, obs, action in trajectories]
 
     state_dim = len(actual_states[0][0])
     N = len(trajectories)
@@ -433,7 +436,7 @@ def rollout_kf(kf_model, trajectories, start_time=0, max_timesteps=300,
         f.create_dataset("predicted_sigmas", data=predicted_sigmas)
         f.close()
         
-    return predicted_states, actual_states, predicted_sigmas
+    return predicted_states, actual_states, predicted_sigmas, contact_states
 
 def eval_rollout(predicted_states, actual_states, plot=False, plot_traj=None, start=0):
 
