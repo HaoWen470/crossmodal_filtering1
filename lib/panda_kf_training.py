@@ -17,7 +17,8 @@ def train_dynamics(buddy, kf_model, dataloader, log_interval=10,
     for batch_idx, batch in enumerate(dataloader):
         prev_state, observation, control, new_state = fannypack.utils.to_device(batch, buddy._device)
         #         states = states[:,0,:]
-        predicted_states = kf_model.dynamics_model.forward(prev_state, control)
+        predicted_states = kf_model.dynamics_model.forward(
+            prev_state, control, noisy=True)
         loss = F.mse_loss(predicted_states, new_state)
 
         buddy.minimize(loss,
@@ -59,7 +60,7 @@ def train_dynamics_recurrent(
             new_states = kf_model.dynamics_model(
                 prev_states,
                 controls,
-                noisy=False,
+                noisy=True,
             )
 
             pred_delta = prev_states - new_states
@@ -193,9 +194,10 @@ def train_e2e(buddy, ekf_model, dataloader,
 
             mse = torch.mean((state - batch_states[:, t, :]) ** 2)
 
+            assert loss_type in ['nll', 'mse', 'mixed']
             if loss_type =='nll':
                 # import ipdb;ipdb.set_trace()
-                loss_type = nll
+                loss = nll
             elif loss_type == 'mse':
                 loss = mse
             else:
@@ -312,6 +314,9 @@ def rollout_kf(kf_model, trajectories, start_time=0, max_timesteps=300,
     end_time -=1
     actual_states = [states[start_time:end_time]
                      for states, _, _ in trajectories]
+    
+    contact_states = [action[start_time : end_time][:,-1]
+             for states, obs, action in trajectories]
 
     state_dim = len(actual_states[0][0])
     N = len(trajectories)
@@ -431,7 +436,7 @@ def rollout_kf(kf_model, trajectories, start_time=0, max_timesteps=300,
         f.create_dataset("predicted_sigmas", data=predicted_sigmas)
         f.close()
         
-    return predicted_states, actual_states, predicted_sigmas
+    return predicted_states, actual_states, predicted_sigmas, contact_states
 
 def eval_rollout(predicted_states, actual_states, plot=False, plot_traj=None, start=0):
 

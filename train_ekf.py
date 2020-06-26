@@ -37,7 +37,7 @@ if __name__ == '__main__':
     parser.add_argument("--set_r", type=float, default=None)
     parser.add_argument("--no_proprio", action="store_true")
     parser.add_argument("--measurement_nll", action="store_true")
-    parser.add_argument("--ekf_loss", choices=['mse', 'nll', 'mixed'])
+    parser.add_argument("--ekf_loss", choices=['mse', 'nll', 'mixed'], default="mse")
     parser.add_argument("--learnable_Q", action="store_true")
     parser.add_argument("--learnable_Q_dyn", action="store_true")
 
@@ -160,6 +160,12 @@ if __name__ == '__main__':
             **dataset_args)
 
     if args.train == "all":
+        dataloader_dynamics = torch.utils.data.DataLoader(
+            dataset_dynamics, batch_size=args.batch, shuffle=True, num_workers=2, drop_last=True)
+
+        for i in range(args.pretrain):
+            print("Training dynamics epoch", i)
+            training.train_dynamics(buddy, ekf, dataloader_dynamics, optim_name="dynamics")
 
         #load dynamics data
         dataloader_dynamics = torch.utils.data.DataLoader(
@@ -167,7 +173,7 @@ if __name__ == '__main__':
 
         # TRAIN DYNAMICS MODEL
         for i in range(args.pretrain):
-            print("Training dynamics epoch", i)
+            print("Training recurrent dynamics epoch", i)
             training.train_dynamics_recurrent(buddy, ekf, dataloader_dynamics, optim_name="dynamics")
 
         buddy.save_checkpoint("phase_0_dynamics_pretrain")
