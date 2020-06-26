@@ -14,3 +14,18 @@ def gaussian_log_likelihood(x, mu, sigma):
     sigma_det = 0.5 * torch.log(torch.det(sigma))
 
     return -(mse+const+sigma_det)
+
+def denormalize_state(state, state_sigma, mean, std):
+    d_state = state*std + mean
+
+    d_state_sigma = state_sigma.copy()
+    d_state_sigma[0,0] *= std[0]**2
+    d_state_sigma[1,1] *= std[1]**2
+    d_state_sigma[0,1] *= std[0]*std[1]
+    d_state_sigma[1,0] = d_state_sigma[1,0]
+
+    return d_state, d_state_sigma
+
+def denormalize(x, mean, std):
+
+    return x*std+mean

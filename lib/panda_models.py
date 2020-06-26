@@ -114,17 +114,14 @@ class PandaDynamicsModel(dpf.DynamicsModel):
         )
 
         self.units = units
+        Q_l = torch.from_numpy(np.array(self.state_noise_stddev)).float()
 
-        Q = torch.from_numpy(
-            np.diag(np.array(self.state_noise_stddev))).float()
-
-        self.Q = torch.nn.Parameter(Q, requires_grad=learnable_Q)
-
+        self.Q_l = torch.nn.Parameter(Q_l, requires_grad=learnable_Q)
 
     def forward(self, states_prev, controls, noisy=False):
         # states_prev:  (N, M, state_dim)
         # controls: (N, control_dim)
-
+        # print("RUNNING DYNAMICS!")
         self.jacobian = False
         if self.use_particles:
             assert len(states_prev.shape) == 3  # (N, M, state_dim)
@@ -132,6 +129,7 @@ class PandaDynamicsModel(dpf.DynamicsModel):
             dimensions = (N, M)
         else:
             if len(states_prev.shape) > 2:
+                #this is due to mask for jacobian
                 N, X, state_dim = states_prev.shape
                 dimensions = (N, X)
                 self.jacobian = True
@@ -190,14 +188,20 @@ class PandaDynamicsModel(dpf.DynamicsModel):
         states_new = states_prev + state_update
         assert states_new.shape == dimensions + (state_dim,)
 
+        self.Q = torch.diag(self.Q_l**2)
+
+        # print("q: ", self.Q)
         # Add noise if desired
         if noisy:
             # TODO: implement version w/ learnable noise
             # (via reparemeterization; should be simple)
-            dist = torch.distributions.Normal(
-                torch.zeros(self.state_dim, dtype=torch.float32),
-                torch.FloatTensor(self.state_noise_stddev))
-            noise = dist.sample(dimensions).to(states_new.device)
+            dist = torch.distributions.MultivariateNormal(
+                torch.zeros(self.state_dim, dtype=torch.float32).to(states_new.device),
+                self.Q,)
+            # Taking sqrt of the covariance matrix since it is diagonal...
+            # Normal takes in std instead of variance
+
+            noise = dist.sample(dimensions)
             assert noise.shape == dimensions + (state_dim,)
             states_new = states_new + noise
 
