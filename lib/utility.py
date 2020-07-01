@@ -15,6 +15,12 @@ def gaussian_log_likelihood(x, mu, sigma):
 
     return -(mse+const+sigma_det)
 
+# def gaussian_log_likelihood(x, mu, sigma):
+#
+#     prob = torch.distributions.multivariate_normal.MultivariateNormal(mu,
+#                                                                       sigma)
+#     return prob.log_prob(x)
+
 def denormalize_state(state, state_sigma, mean, std):
     d_state = state*std + mean
 

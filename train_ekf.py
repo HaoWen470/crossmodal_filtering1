@@ -36,7 +36,7 @@ if __name__ == '__main__':
     parser.add_argument("--load_checkpoint", type=str, default=None)
     parser.add_argument("--set_r", type=float, default=None)
     parser.add_argument("--no_proprio", action="store_true")
-    parser.add_argument("--measurement_nll", action="store_true")
+    parser.add_argument("--meas_loss", choices=['mse', 'nll', 'mixed'], default="mse")
     parser.add_argument("--ekf_loss", choices=['mse', 'nll', 'mixed'], default="mse")
     parser.add_argument("--learnable_Q", action="store_true")
     parser.add_argument("--learnable_Q_dyn", action="store_true")
@@ -61,7 +61,7 @@ if __name__ == '__main__':
         'sequential_image_rate': args.sequential_image,
         'start_timestep': args.start_timestep,
         'set_r': args.set_r,
-        'measurement_nll': args.measurement_nll,
+        'measurement_loss': args.meas_loss,
         'ekf_loss': args.ekf_loss,
         'learnable_Q': args.learnable_Q,
         "obs_only": args.obs_only,
@@ -189,7 +189,7 @@ if __name__ == '__main__':
         for i in range(int(args.pretrain/2)):
             print("Training measurement epoch", i)
             training.train_measurement(buddy, ekf, measurement_trainset_loader,
-                                       log_interval=20, optim_name="measurement", nll=args.measurement_nll)
+                                       log_interval=20, optim_name="measurement", loss_type = args.meas_loss)
             print()
 
         buddy.save_checkpoint("phase_2_measurement_pretrain")
@@ -200,7 +200,7 @@ if __name__ == '__main__':
     #turn off dynamics Q
 
     if not args.learnable_Q:
-        ekf.dynamics_model.Q.requires_grad = False
+        ekf.dynamics_model.Q_l.requires_grad = False
 
     #TRAIN E2D EKF
     for i in range(args.epochs):

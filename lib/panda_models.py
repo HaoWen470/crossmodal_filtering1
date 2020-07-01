@@ -116,7 +116,8 @@ class PandaDynamicsModel(dpf.DynamicsModel):
         self.units = units
         Q_l = torch.from_numpy(np.array(self.state_noise_stddev)).float()
 
-        self.Q_l = torch.nn.Parameter(Q_l, requires_grad=learnable_Q)
+        self.learnable_Q = learnable_Q
+        self.Q_l = torch.nn.Parameter(Q_l, requires_grad=self.learnable_Q)
 
     def forward(self, states_prev, controls, noisy=False):
         # states_prev:  (N, M, state_dim)
@@ -200,8 +201,10 @@ class PandaDynamicsModel(dpf.DynamicsModel):
                 self.Q,)
             # Taking sqrt of the covariance matrix since it is diagonal...
             # Normal takes in std instead of variance
-
-            noise = dist.sample(dimensions)
+            if self.learnable_Q:
+                noise = dist.rsample(dimensions)
+            else:
+                noise = dist.sample(dimensions)
             assert noise.shape == dimensions + (state_dim,)
             states_new = states_new + noise
 
