@@ -83,6 +83,8 @@ if __name__ == '__main__':
 
     if args.load_checkpoint is not None:
         buddy.load_checkpoint(path = args.load_checkpoint)
+    else:
+        buddy.load_checkpoint()
 
     print("Creating dataset...")
 
