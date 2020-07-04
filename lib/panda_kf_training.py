@@ -192,7 +192,6 @@ def train_e2e(buddy, ekf_model, dataloader,
                 prev_state_sigma,
                 utils.DictIterator(batch_obs)[:, t, :],
                 batch_controls[:, t, :],
-                noisy_dynamics=False,
             )
 
             assert state.shape == batch_states[:, t, :].shape
