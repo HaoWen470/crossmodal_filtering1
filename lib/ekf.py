@@ -55,8 +55,7 @@ class KalmanFilterNetwork(nn.Module):
     def forward(self, states_prev,
                 states_sigma_prev,
                 observations,
-                controls,
-                noisy_dynamics=True,):
+                controls,):
         # states_prev: (N, *)
         # states_sigma_prev: (N, *, *)
         # observations: (N, *)
@@ -67,7 +66,7 @@ class KalmanFilterNetwork(nn.Module):
         N, state_dim = states_prev.shape
         # Dynamics prediction step
         states_pred = self.dynamics_model(
-            states_prev, controls, noisy=noisy_dynamics)
+            states_prev, controls, noisy=False)
         states_pred_Q = self.dynamics_model.Q
 
         if self.freeze_dynamics_model:

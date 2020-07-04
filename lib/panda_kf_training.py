@@ -18,7 +18,7 @@ def train_dynamics(buddy, kf_model, dataloader, log_interval=10,
         prev_state, observation, control, new_state = fannypack.utils.to_device(batch, buddy._device)
         #         states = states[:,0,:]
         predicted_states = kf_model.dynamics_model.forward(
-            prev_state, control, noisy=True)
+            prev_state, control, noisy=False)
         loss = F.mse_loss(predicted_states, new_state)
 
         buddy.minimize(loss,
@@ -60,7 +60,7 @@ def train_dynamics_recurrent(
             new_states = kf_model.dynamics_model(
                 prev_states,
                 controls,
-                noisy=True,
+                noisy=False,
             )
 
             pred_delta = prev_states - new_states
@@ -111,7 +111,8 @@ def train_dynamics_recurrent(
 
 def train_measurement(buddy, kf_model, dataloader, log_interval=10,
                       optim_name="ekf_measurement", checkpoint_interval=500,
-                      nll=False):
+                      loss_type="mse"):
+    assert loss_type in ["mse", "mixed", "nll"]
 
     losses = []
 
@@ -119,10 +120,17 @@ def train_measurement(buddy, kf_model, dataloader, log_interval=10,
         noisy_state, observation, _, state = fannypack.utils.to_device(batch, buddy._device)
         #         states = states[:,0,:]
         state_update, R = kf_model.measurement_model(observation, noisy_state)
-        loss = F.mse_loss(state_update, state)
-        if nll:
-            loss = -utility.gaussian_log_likelihood(state_update, state, R)
-            loss = torch.mean(loss)
+        mse = F.mse_loss(state_update, state)
+
+        nll = -1.0*utility.gaussian_log_likelihood(state_update, state, R)
+        nll = torch.mean(nll)
+
+        if loss_type == "mse":
+            loss = mse
+        elif loss_type == "nll":
+            loss = nll
+        else:
+            loss = mse + nll
             # import ipdb; ipdb.set_trace()
         buddy.minimize(loss,
                        optimizer_name= optim_name,
@@ -160,7 +168,7 @@ def train_e2e(buddy, ekf_model, dataloader,
 
         state = batch_states[:, 0, :]
         #todo: square
-        state_sigma = torch.eye(state.shape[-1], device=buddy._device) * init_state_noise**2
+        state_sigma = torch.eye(state.shape[-1], device=buddy._device) * init_state_noise
         state_sigma = state_sigma.unsqueeze(0).repeat(N, 1, 1)
 
         if measurement_init:
@@ -184,12 +192,11 @@ def train_e2e(buddy, ekf_model, dataloader,
                 prev_state_sigma,
                 utils.DictIterator(batch_obs)[:, t, :],
                 batch_controls[:, t, :],
-                noisy_dynamics=True
+                noisy_dynamics=False,
             )
 
             assert state.shape == batch_states[:, t, :].shape
-
-            nll = -utility.gaussian_log_likelihood(state, batch_states[:, t, :], state_sigma)
+            nll = -1.0*utility.gaussian_log_likelihood(state, batch_states[:, t, :], state_sigma)
             nll = torch.mean(nll)
 
             mse = torch.mean((state - batch_states[:, t, :]) ** 2)
@@ -231,7 +238,7 @@ def train_fusion(buddy, fusion_model, dataloader, log_interval=2,
         assert batch_controls.shape == (N, timesteps, control_dim)
 
         state = batch_states[:, 0, :]
-        state_sigma = torch.eye(state.shape[-1], device=buddy._device) * init_state_noise**2
+        state_sigma = torch.eye(state.shape[-1], device=buddy._device) * init_state_noise
         state_sigma = state_sigma.unsqueeze(0).repeat(N, 1, 1)
 
         if measurement_init:
@@ -272,7 +279,7 @@ def train_fusion(buddy, fusion_model, dataloader, log_interval=2,
             losses_fused.append(loss_fused.item())
 
             if nll:
-                loss_nll = torch.mean(-utility.gaussian_log_likelihood(state, batch_states[:, t, :], state_sigma))
+                loss_nll = torch.mean(-1.0*utility.gaussian_log_likelihood(state, batch_states[:, t, :], state_sigma))
                 losses_nll.append(loss_nll)
                 losses_total.append(loss_nll)
 
@@ -300,7 +307,7 @@ def train_fusion(buddy, fusion_model, dataloader, log_interval=2,
 
 
 def rollout_kf(kf_model, trajectories, start_time=0, max_timesteps=300,
-               noisy_dynamics=True, true_initial=True, init_state_noise=0.0,
+               noisy_dynamics=False, true_initial=True, init_state_noise=0.0,
                save_data_name=None):
     # To make things easier, we're going to cut all our trajectories to the
     # same length :)
@@ -331,7 +338,7 @@ def rollout_kf(kf_model, trajectories, start_time=0, max_timesteps=300,
     if true_initial:
         for i in range(N):
             initial_states[i] = trajectories[i][0][0] + np.random.normal(0.0, scale=init_state_noise, size=initial_states[i].shape)
-            initial_sigmas[i] = np.eye(state_dim) * init_state_noise**2
+            initial_sigmas[i] = np.eye(state_dim) * init_state_noise
             ## todo: square? 
         (initial_states,
          initial_sigmas) = utils.to_torch((
@@ -356,6 +363,7 @@ def rollout_kf(kf_model, trajectories, start_time=0, max_timesteps=300,
             initial_sigmas,
             initial_obs,
             dummy_controls,
+            noisy_dynamics=False,
         )
         initial_states = states_tuple[0]
         initial_sigmas = states_tuple[1]
@@ -534,7 +542,9 @@ def eval_2d_rollout(predicted_states, actual_states, plot=False, plot_traj=None,
         plt.show()
 
 def rollout_fusion(kf_model, trajectories, start_time=0, max_timesteps=300,
-               noisy_dynamics=True, true_initial=True, init_state_noise=0.0,
+
+
+               dynamics=True, true_initial=True, init_state_noise=0.0,
                save_data_name=None):
     # To make things easier, we're going to cut all our trajectories to the
     # same length :)
@@ -553,7 +563,7 @@ def rollout_fusion(kf_model, trajectories, start_time=0, max_timesteps=300,
     device = next(kf_model.parameters()).device
 
     initial_states = np.zeros((N, state_dim))
-    initial_sigmas = np.ones((N, state_dim, state_dim)) * init_state_noise **2
+    initial_sigmas = np.ones((N, state_dim, state_dim)) * init_state_noise
     initial_obs = {}
     
     kf_model.eval
@@ -584,6 +594,7 @@ def rollout_fusion(kf_model, trajectories, start_time=0, max_timesteps=300,
             initial_sigmas,
             initial_obs,
             dummy_controls,
+            noisy_dynamics=False,
         )
         initial_states = states_tuple[0]
         initial_sigmas = states_tuple[1]
