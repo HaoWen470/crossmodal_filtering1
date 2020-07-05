@@ -21,8 +21,8 @@ def gaussian_log_likelihood(x, mu, sigma):
 #                                                                       sigma)
 #     return prob.log_prob(x)
 
-def denormalize_state(state, state_sigma, mean, std):
-    d_state = state*std + mean
+def denormalize_state(state, state_sigma, mean=[0.4970164, -0.00916641], std=[0.0572766,0.06118315]):
+    d_state = state*np.array(std) + np.array(mean)
 
     d_state_sigma = state_sigma.copy()
     d_state_sigma[0,0] *= std[0]**2
