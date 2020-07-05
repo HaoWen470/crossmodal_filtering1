@@ -4,7 +4,7 @@ import scipy.stats
 from tqdm.auto import tqdm
 
 from fannypack import utils
-
+import fannypack
 from . import dpf
 
 
@@ -138,8 +138,8 @@ def load_trajectories(*paths, use_vision=True, vision_interval=10,
                 ## > end effector position delta
                 ## > binary contact reading
                 eef_positions = trajectory['eef_pos']
-                eef_positions_shifted = np.roll(eef_positions, shift=-1)
-                eef_positions_shifted[-1] = eef_positions[-1]
+                eef_positions_shifted = np.roll(eef_positions, shift=1, axis=0)
+                eef_positions_shifted[0] = eef_positions[0]
                 controls = np.concatenate([
                     eef_positions_shifted,
                     eef_positions - eef_positions_shifted,
@@ -162,13 +162,10 @@ def load_trajectories(*paths, use_vision=True, vision_interval=10,
                       0.01675198, 0.40950698]], dtype=np.float32)
                 states -= np.array([[0.4970164, -0.00916641]])
                 states /= np.array([[0.0572766, 0.06118315]])
-                controls -= np.array(
-                    [[3.2848225e-04, 8.7676758e-01, 4.6962801e-01,
-                      4.6772522e-01, -8.7855840e-01, 4.1107172e-01,
-                      2.1303751e-01]], dtype=np.float32)
-                controls /= np.array(
-                    [[0.03975769, 0.07004428, 0.03383452, 0.04635485,
-                      0.07224426, 0.05950112, 0.40950698]], dtype=np.float32)
+                controls -= np.array([[4.6594709e-01, -2.5247163e-03, 8.8094306e-01, 1.2939950e-04,
+                                       -5.4364675e-05, -6.1112235e-04, 2.2041667e-01]], dtype=np.float32)
+                controls /= np.array([[0.02239027, 0.02356066, 0.0405312, 0.00054858, 0.0005754,
+                                       0.00046352, 0.41451886]], dtype=np.float32)
 
                 x_delta = states[start_timestep, 0] - states[-1, 0]
                 y_delta = states[start_timestep, 1]-states[-1, 1]
@@ -196,12 +193,15 @@ def _print_normalization(trajectories):
     """ Helper for producing code to normalize inputs
     """
     states = []
-    observations = {}
+    observations = fannypack.utils.SliceWrapper({})
     controls = []
     for t in trajectories:
         states.extend(t[0])
-        utils.DictIterator(observations).extend(t[1])
+        observations.append(t[1])
         controls.extend(t[2])
+    observations = observations.map(
+        lambda list_value: np.concatenate(list_value, axis=0)
+    )
 
     def print_ranges(**kwargs):
         for k, v in kwargs.items():
