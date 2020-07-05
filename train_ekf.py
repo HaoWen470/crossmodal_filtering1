@@ -34,6 +34,7 @@ if __name__ == '__main__':
     parser.add_argument("--sequential_image", type=int, default=1)
     parser.add_argument("--start_timestep", type=int, default=0)
     parser.add_argument("--load_checkpoint", type=str, default=None)
+    parser.add_argument("--load_path", type=str, default=None)
     parser.add_argument("--set_r", type=float, default=None)
     parser.add_argument("--no_proprio", action="store_true")
     parser.add_argument("--meas_loss", choices=['mse', 'nll', 'mixed'], default="mse")
@@ -82,9 +83,9 @@ if __name__ == '__main__':
     buddy.add_metadata(dataset_args)
 
     if args.load_checkpoint is not None:
-        buddy.load_checkpoint(path = args.load_checkpoint)
-    else:
-        buddy.load_checkpoint()
+        buddy.load_checkpoint(args.load_checkpoint)
+    elif args.load_path is not None:
+        buddy.load_checkpoint(path=args.load_path )
 
     print("Creating dataset...")
 
