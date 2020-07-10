@@ -26,7 +26,6 @@ def get_actions(trajectories, start_time=0, max_timesteps=300):
 
     end_time = np.min([len(s) for s, _, _ in trajectories] +
                       [start_time + max_timesteps])
-    end_time -=1
 
     actions = [action[start_time : end_time]
              for states, obs, action in trajectories]
@@ -46,7 +45,6 @@ def rollout_kf(kf_model, trajectories, start_time=0, max_timesteps=300,
 
     print("endtime: ", end_time)
 
-    end_time -= 1
     actual_states = [states[start_time:end_time]
                      for states, _, _ in trajectories]
 
@@ -173,6 +171,166 @@ def rollout_kf(kf_model, trajectories, start_time=0, max_timesteps=300,
         f.close()
 
     return predicted_states, actual_states, predicted_sigmas, contact_states
+
+def rollout_kf_full(kf_model, trajectories, start_time=0, max_timesteps=300,
+                    true_initial=True, init_state_noise=0.2,):
+    # To make things easier, we're going to cut all our trajectories to the
+    # same length :)
+
+    kf_model.eval()
+    end_time = np.min([len(s) for s, _, _ in trajectories] +
+                      [start_time + max_timesteps])
+
+    print("endtime: ", end_time)
+
+    actual_states = [states[start_time:end_time]
+                     for states, _, _ in trajectories]
+
+    contact_states = [action[start_time: end_time][:, -1]
+                      for states, obs, action in trajectories]
+
+    actions = get_actions(trajectories, start_time, max_timesteps)
+
+    state_dim = len(actual_states[0][0])
+    N = len(trajectories)
+    controls_dim = trajectories[0][2][0].shape
+
+    device = next(kf_model.parameters()).device
+
+    initial_states = np.zeros((N, state_dim))
+    initial_sigmas = np.zeros((N, state_dim, state_dim))
+    initial_obs = {}
+
+    if true_initial:
+        for i in range(N):
+            initial_states[i] = trajectories[i][0][0] + np.random.normal(0.0, scale=init_state_noise,
+                                                                         size=initial_states[i].shape)
+            initial_sigmas[i] = np.eye(state_dim) * init_state_noise ** 2
+        (initial_states,
+         initial_sigmas) = utils.to_torch((
+            initial_states,
+            initial_sigmas), device=device)
+    else:
+        # Put into measurement model!
+        dummy_controls = torch.ones((N,) + controls_dim, ).to(device)
+        for i in range(N):
+            utils.DictIterator(initial_obs).append(utils.DictIterator(trajectories[i][1])[0])
+
+        utils.DictIterator(initial_obs).convert_to_numpy()
+
+        (initial_obs,
+         initial_states,
+         initial_sigmas) = utils.to_torch((initial_obs,
+                                           initial_states,
+                                           initial_sigmas), device=device)
+
+        states_tuple = kf_model.forward(
+            initial_states,
+            initial_sigmas,
+            initial_obs,
+            dummy_controls,
+            noisy_dynamics=False,
+        )
+        initial_states = states_tuple[0]
+        initial_sigmas = states_tuple[1]
+        predicted_states = [[utils.to_numpy(initial_states[i])]
+                            for i in range(len(trajectories))]
+
+    states = initial_states
+    sigmas = initial_sigmas
+
+    predicted_states = [[utils.to_numpy(initial_states[i])]
+                        for i in range(len(trajectories))]
+    predicted_sigmas = [[utils.to_numpy(initial_sigmas[i])]
+                        for i in range(len(trajectories))]
+
+    predicted_dyn_states = [[utils.to_numpy(initial_states[i])]
+                        for i in range(len(trajectories))]
+    predicted_dyn_sigmas = [[utils.to_numpy(initial_sigmas[i])]
+                        for i in range(len(trajectories))]
+
+    predicted_meas_states = [[utils.to_numpy(initial_states[i])]
+                        for i in range(len(trajectories))]
+    predicted_meas_sigmas = [[utils.to_numpy(initial_sigmas[i])]
+                        for i in range(len(trajectories))]
+
+    # jacobian is not initialized
+    predicted_jac = [[] for i in range(len(trajectories))]
+
+    for t in tqdm(range(start_time + 1, end_time)):
+        s = []
+        o = {}
+        c = []
+
+        for i, traj in enumerate(trajectories):
+            s, observations, controls = traj
+
+            o_t = utils.DictIterator(observations)[t]
+            utils.DictIterator(o).append(o_t)
+            c.append(controls[t])
+
+        s = np.array(s)
+        utils.DictIterator(o).convert_to_numpy()
+        c = np.array(c)
+        (s, o, c) = utils.to_torch((s, o, c), device=device)
+
+        estimates = kf_model.forward(
+            states,
+            sigmas,
+            o,
+            c,
+        )
+
+        state_estimates = estimates[0].data
+        sigma_estimates = estimates[1].data
+
+        states = state_estimates
+        sigmas = sigma_estimates
+
+        dynamics_states = kf_model.dynamics_states
+        dynamics_sigma = kf_model.dynamics_sigma
+        measurement_states = kf_model.measurement_states
+        measurement_sigma = kf_model.measurement_sigma
+        dynamics_jac = kf_model.dynamics_jac
+
+
+        for i in range(len(trajectories)):
+            predicted_dyn_states[i].append(
+                utils.to_numpy(
+                   dynamics_states[i]))
+            predicted_dyn_sigmas[i].append(
+                utils.to_numpy(
+                    dynamics_sigma))
+            predicted_meas_states[i].append(
+                utils.to_numpy(
+                   measurement_states[i]))
+            predicted_meas_sigmas[i].append(
+                utils.to_numpy(
+                    measurement_sigma[i]))
+            predicted_jac[i].append(
+                utils.to_numpy(
+                    dynamics_jac[i]))
+            predicted_states[i].append(
+                utils.to_numpy(
+                    state_estimates[i]))
+            predicted_sigmas[i].append(
+                utils.to_numpy(
+                    sigma_estimates[i]))
+
+    results={}
+
+    results['dyn_states'] = np.array(predicted_dyn_states)
+    results['dyn_sigmas'] = np.array(predicted_dyn_sigmas)
+    results['meas_states'] = np.array(predicted_meas_states)
+    results['meas_sigmas'] = np.array(predicted_meas_sigmas)
+    results['dyn_jac'] = np.array(predicted_jac)
+    results['predicted_states'] = np.array(predicted_states)
+    results['predicted_sigmas'] = np.array(predicted_sigmas)
+    results['actual_states'] = np.array(actual_states)
+    results['contact_states'] = np.array(contact_states)
+    results['actions'] = np.array(actions)
+
+    return results
 
 
 def rollout_fusion(kf_model, trajectories, start_time=0, max_timesteps=300,
@@ -395,6 +553,32 @@ def init_experiment(experiment_name,
 
     return model, buddy, eval_trajectories
 
+
+def ekf_eval_full(experiment_name,
+                fusion_type=None,
+                omnipush=False,
+                learnable_Q=False,
+               load_checkpoint=None):
+
+    model, buddy, eval_trajectories = init_experiment(experiment_name,
+                                                      fusion_type,
+                                                      omnipush,
+                                                      learnable_Q,
+                                                      load_checkpoint)
+    if load_checkpoint is None:
+        buddy.load_checkpoint()
+    else:
+        buddy.load_checkpoint(load_checkpoint)
+
+    model.eval()
+
+    x = rollout_kf_full(model,
+                   eval_trajectories,
+                   true_initial=True,
+                   init_state_noise=0.2)
+
+    return x
+
 def ekf_eval_experiment(experiment_name,
                         fusion_type=None,
                         omnipush=False,
@@ -414,7 +598,7 @@ def ekf_eval_experiment(experiment_name,
 
     model.eval()
     if fusion_type is None:
-        x = rollout_kf(
+        x = rollout_kf_full(
             model,
             eval_trajectories,
             true_initial=True,
