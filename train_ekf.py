@@ -73,7 +73,7 @@ if __name__ == '__main__':
 
 
     print("Creating model...")
-    measurement = PandaEKFMeasurementModel(units=args.hidden_units, use_states= not args.obs_only)
+    measurement = PandaEKFMeasurementModel(units=args.hidden_units, use_states=False)
     dynamics = PandaDynamicsModel(use_particles=False, learnable_Q=args.learnable_Q or args.learnable_Q_dyn)
     ekf = KalmanFilterNetwork(dynamics, measurement, R=args.set_r)
 
