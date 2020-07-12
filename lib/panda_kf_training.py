@@ -122,14 +122,15 @@ def train_measurement(buddy, kf_model, dataloader, log_interval=10,
         state_update, R = kf_model.measurement_model(observation, noisy_state)
         mse = F.mse_loss(state_update, state)
 
-        nll = -1.0*utility.gaussian_log_likelihood(state_update, state, R)
-        nll = torch.mean(nll)
-
         if loss_type == "mse":
             loss = mse
         elif loss_type == "nll":
+            nll = -1.0 * utility.gaussian_log_likelihood(state_update, state, R)
+            nll = torch.mean(nll)
             loss = nll
         else:
+            nll = -1.0 * utility.gaussian_log_likelihood(state_update, state, R)
+            nll = torch.mean(nll)
             loss = mse + nll
             # import ipdb; ipdb.set_trace()
         buddy.minimize(loss,
@@ -194,18 +195,21 @@ def train_e2e(buddy, ekf_model, dataloader,
             )
 
             assert state.shape == batch_states[:, t, :].shape
-            nll = -1.0*utility.gaussian_log_likelihood(state, batch_states[:, t, :], state_sigma)
-            nll = torch.mean(nll)
+
 
             mse = torch.mean((state - batch_states[:, t, :]) ** 2)
 
             assert loss_type in ['nll', 'mse', 'mixed']
             if loss_type =='nll':
+                nll = -1.0 * utility.gaussian_log_likelihood(state, batch_states[:, t, :], state_sigma)
+                nll = torch.mean(nll)
                 # import ipdb;ipdb.set_trace()
                 loss = nll
             elif loss_type == 'mse':
                 loss = mse
             else:
+                nll = -1.0 * utility.gaussian_log_likelihood(state, batch_states[:, t, :], state_sigma)
+                nll = torch.mean(nll)
                 loss = nll + mse
 
             losses.append(loss)

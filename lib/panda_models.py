@@ -357,7 +357,7 @@ class PandaEKFMeasurementModel(dpf.MeasurementModel):
                  use_states=False,
                  use_spatial_softmax=False,
                  missing_modalities=None,
-                 add_R_noise = 1e-9):
+                 add_R_noise = 1e-6):
         super().__init__()
 
         obs_pose_dim = 3
