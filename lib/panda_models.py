@@ -122,7 +122,7 @@ class PandaDynamicsModel(dpf.DynamicsModel):
     def forward(self, states_prev, controls, noisy=False):
         # states_prev:  (N, M, state_dim)
         # controls: (N, control_dim)
-        # print("RUNNING DYNAMICS!")
+
         self.jacobian = False
         if self.use_particles:
             assert len(states_prev.shape) == 3  # (N, M, state_dim)
@@ -194,8 +194,6 @@ class PandaDynamicsModel(dpf.DynamicsModel):
         # print("q: ", self.Q)
         # Add noise if desired
         if noisy:
-            # TODO: implement version w/ learnable noise
-            # (via reparemeterization; should be simple)
             dist = torch.distributions.MultivariateNormal(
                 torch.zeros(self.state_dim, dtype=torch.float32).to(states_new.device),
                 self.Q,)
@@ -356,16 +354,17 @@ class PandaEKFMeasurementModel(dpf.MeasurementModel):
 
     def __init__(self, units=128,
                  state_dim=2,
-                 use_states=True,
+                 use_states=False,
                  use_spatial_softmax=False,
                  missing_modalities=None,
-                 add_R_noise = 1e-6):
+                 add_R_noise = 1e-9):
         super().__init__()
 
         obs_pose_dim = 3
         obs_sensors_dim = 7
         image_dim = (32, 32)
 
+        #We do not use states for EKF
         self.state_dim = state_dim
         # if we want to use states in measurement model update
         self.use_states = use_states
@@ -419,13 +418,10 @@ class PandaEKFMeasurementModel(dpf.MeasurementModel):
                 activation='leaky_relu',
                 activations_inplace=False),
         )
-        self.state_layers = nn.Sequential(
-            nn.Linear(self.state_dim, units),
-        )
 
         # missing modalities
         self.shared_layers = nn.Sequential(
-            nn.Linear(units * (len(self.modalities) + 1), units * 2),
+            nn.Linear(units * (len(self.modalities)), units * 2),
             nn.ReLU(inplace=True),
             resblocks.Linear(2 * units),
             resblocks.Linear(2 * units),
@@ -488,25 +484,7 @@ class PandaEKFMeasurementModel(dpf.MeasurementModel):
         assert observation_features.shape == (
             N, self.units * len(self.modalities))
 
-        if self.use_states:
-            # (N, units)
-            # (N, state_dim) => (N, units)
-            state_features = self.state_layers(states)
-        else:
-            state_features = self.state_layers(
-                torch.zeros(
-                    states.shape).to(
-                    states.device))
-        assert state_features.shape == (N, self.units)
-
-        merged_features = torch.cat(
-            (observation_features, state_features),
-            dim=1)
-        # missing modalities
-        assert merged_features.shape == (
-            N, self.units * (len(self.modalities) + 1))
-
-        shared_features = self.shared_layers(merged_features)
+        shared_features = self.shared_layers(observation_features)
         assert shared_features.shape == (N, self.units * 2)
 
         shared_features_z = shared_features[:, :self.units].clone()

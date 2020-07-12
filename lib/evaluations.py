@@ -513,18 +513,22 @@ def init_experiment(experiment_name,
     # Experiment configuration
 
     if fusion_type is None:
-        measurement = PandaEKFMeasurementModel()
+        measurement = PandaEKFMeasurementModel(use_states=False)
         dynamics = PandaDynamicsModel(use_particles=False, learnable_Q=learnable_Q)
         model = KalmanFilterNetwork(dynamics, measurement)
         optimizer_names = ["ekf", "dynamics", "measurement"]
     else:
         # image_modality_model
-        image_measurement = PandaEKFMeasurementModel(missing_modalities=['gripper_sensors'], units=64)
+        image_measurement = PandaEKFMeasurementModel(missing_modalities=['gripper_sensors'],
+                                                     units=64,
+                                                     use_states=False )
         image_dynamics = PandaDynamicsModel(use_particles=False, learnable_Q=learnable_Q)
         image_model = KalmanFilterNetwork(image_dynamics, image_measurement)
 
         # force_modality_model
-        force_measurement = PandaEKFMeasurementModel(missing_modalities=['image'], units=64)
+        force_measurement = PandaEKFMeasurementModel(missing_modalities=['image'],
+                                                     units=64,
+                                                     use_statse=False )
         force_dynamics = PandaDynamicsModel(use_particles=False, learnable_Q=learnable_Q)
         force_model = KalmanFilterNetwork(force_dynamics, force_measurement)
 

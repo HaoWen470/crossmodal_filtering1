@@ -41,6 +41,7 @@ if __name__ == '__main__':
     parser.add_argument("--ekf_loss", choices=['mse', 'nll', 'mixed'], default="mse")
     parser.add_argument("--learnable_Q", action="store_true")
     parser.add_argument("--learnable_Q_dyn", action="store_true")
+    parser.add_argument("--meas_lr", default=1e-4, type=float)
 
     args = parser.parse_args()
 
@@ -188,17 +189,24 @@ if __name__ == '__main__':
             shuffle=True,
             num_workers=8)
 
+        buddy.set_learning_rate(args.meas_lr, optimizer_name="measurement")
+
         # TRAIN MEASUREMENT MODEL
-        for i in range(int(args.pretrain/2)):
+        for i in range(int(args.pretrain)):
             print("Training measurement epoch", i)
             training.train_measurement(buddy, ekf, measurement_trainset_loader,
-                                       log_interval=20, optim_name="measurement", loss_type = args.meas_loss)
+                                       log_interval=20,
+                                       optim_name="measurement",
+                                       loss_type = args.meas_loss,
+                                       checkpoint_interval=10000)
             print()
 
         buddy.save_checkpoint("phase_2_measurement_pretrain")
 
     #load e2e data
-    e2e_trainset_loader = torch.utils.data.DataLoader(e2e_trainset, batch_size=args.batch, shuffle=True, num_workers=2)
+    e2e_trainset_loader = torch.utils.data.DataLoader(e2e_trainset,
+                                                      batch_size=args.batch,
+                                                      shuffle=True, num_workers=2)
 
     #turn off dynamics Q
 
