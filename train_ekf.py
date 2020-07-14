@@ -228,8 +228,7 @@ if __name__ == '__main__':
                            optim_name="ekf",
                            init_state_noise=args.init_state_noise,
                            loss_type=args.ekf_loss)
-        if i > args.epochs / 2.0:
-            buddy.set_learning_rate(1e-5, optimizer_name="measurement")
+
 
     buddy.save_checkpoint("phase_3_e2e")
     buddy.save_checkpoint()
