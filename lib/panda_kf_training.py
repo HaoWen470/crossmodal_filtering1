@@ -146,6 +146,7 @@ def train_measurement(buddy, kf_model, dataloader, log_interval=10,
                 buddy.log("label_std", fannypack.utils.to_numpy(state).std())
                 buddy.log("pred_mean", fannypack.utils.to_numpy(state_update).mean())
                 buddy.log("pred_std", fannypack.utils.to_numpy(state_update).std())
+                buddy.log_model_grad_norm()
                 # buddy.log_model_grad_hist()
                 # buddy.log_model_weights_hist()
     print("Epoch loss:", np.mean(losses))
@@ -223,6 +224,7 @@ def train_e2e(buddy, ekf_model, dataloader,
         if buddy.optimizer_steps % log_interval == 0:
             with buddy.log_scope(optim_name):
                 buddy.log("Training loss", loss.item())
+                buddy.log_model_grad_norm()
                 # buddy.log_model_grad_hist()
                 # buddy.log_model_weights_hist()
 
