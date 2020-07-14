@@ -6,6 +6,7 @@ from lib.ekf import KalmanFilterNetwork
 from fannypack import utils
 from lib import dpf
 from lib.panda_models import PandaDynamicsModel, PandaEKFMeasurementModel
+from lib.panda_models import PandaEKFMeasurementModel2GAP, PandaEKFMeasurementModelSpatial, PandaEKFMeasurementModelGAP
 
 from lib.fusion import KalmanFusionModel
 from lib.fusion import CrossModalWeights
@@ -67,13 +68,23 @@ if __name__ == '__main__':
         'ekf_loss': args.ekf_loss,
         'learnable_Q': args.learnable_Q,
         "obs_only": args.obs_only,
-        'learnable_Q_dynamics': args.learnable_Q_dyn
+        'learnable_Q_dynamics': args.learnable_Q_dyn,
+        'meas_lr': args.meas_lr,
     }
 
 
 
     print("Creating model...")
-    measurement = PandaEKFMeasurementModel(units=args.hidden_units, use_states=False)
+
+    if args.measurement == "default":
+        measurement = PandaEKFMeasurementModel(units=args.hidden_units)
+    elif args.measurement == "spatial":
+        measurement = PandaEKFMeasurementModelSpatial(units=args.hidden_units)
+    elif args.measurement == "gap":
+        measurement = PandaEKFMeasurementModelGAP(units=args.hidden_units)
+    elif args.measurement == "gaps2":
+        measurement = PandaEKFMeasurementModel2GAP(units=args.hidden_units)
+
     dynamics = PandaDynamicsModel(use_particles=False, learnable_Q=args.learnable_Q or args.learnable_Q_dyn)
     ekf = KalmanFilterNetwork(dynamics, measurement, R=args.set_r)
 
@@ -100,7 +111,7 @@ if __name__ == '__main__':
         "simpler/train5.hdf5",
         subsequence_length=16,
         particle_count=1,
-        particle_stddev=(.03, .03),
+            particle_stddev=(.03, .03),
         **dataset_args
         )
         dataset_measurement = omnipush_datasets.OmnipushMeasurementDataset(
@@ -185,7 +196,7 @@ if __name__ == '__main__':
         #load measurement data
         measurement_trainset_loader = torch.utils.data.DataLoader(
             dataset_measurement,
-            batch_size=args.batch*2,
+            batch_size=args.batch,
             shuffle=True,
             num_workers=8)
 
@@ -199,6 +210,7 @@ if __name__ == '__main__':
                                        optim_name="measurement",
                                        loss_type = args.meas_loss,
                                        checkpoint_interval=10000)
+
             print()
 
         buddy.save_checkpoint("phase_2_measurement_pretrain")
@@ -208,10 +220,6 @@ if __name__ == '__main__':
                                                       batch_size=args.batch,
                                                       shuffle=True, num_workers=2)
 
-    #turn off dynamics Q
-
-    if not args.learnable_Q:
-        ekf.dynamics_model.Q_l.requires_grad = False
 
     #TRAIN E2D EKF
     for i in range(args.epochs):
@@ -220,6 +228,8 @@ if __name__ == '__main__':
                            optim_name="ekf",
                            init_state_noise=args.init_state_noise,
                            loss_type=args.ekf_loss)
+        if i > args.epochs / 2.0:
+            buddy.set_learning_rate(1e-5, optimizer_name="measurement")
 
     buddy.save_checkpoint("phase_3_e2e")
     buddy.save_checkpoint()
