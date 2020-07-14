@@ -154,7 +154,7 @@ def train_measurement(buddy, kf_model, dataloader, log_interval=10,
 
 def train_e2e(buddy, ekf_model, dataloader,
               log_interval=2, optim_name="ekf",
-              measurement_init=False,
+              measurement_init=True,
               checkpoint_interval=1000,
               init_state_noise=0.2, loss_type="mse"
               ):
