@@ -43,6 +43,7 @@ if __name__ == '__main__':
     parser.add_argument("--learnable_Q", action="store_true")
     parser.add_argument("--learnable_Q_dyn", action="store_true")
     parser.add_argument("--meas_lr", default=1e-4, type=float)
+    parser.add_argument("--measurement", type=str, default='default')
 
     args = parser.parse_args()
 
@@ -70,6 +71,7 @@ if __name__ == '__main__':
         "obs_only": args.obs_only,
         'learnable_Q_dynamics': args.learnable_Q_dyn,
         'meas_lr': args.meas_lr,
+        'measurement': args.measurement,
     }
 
 
