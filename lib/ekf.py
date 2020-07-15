@@ -33,6 +33,12 @@ class KalmanFilterNetwork(nn.Module):
 
         self.R = R
 
+        self.dynamics_states = None
+        self.measurement_states = None
+        self.dynamics_sigma = None
+        self.measurement_sigma = None
+        self.dynamics_jac = None
+
     def get_jacobian(self, net, x, noutputs, batch, controls, output_dim=0):
         x = x.detach().clone()
         x = x.squeeze()
@@ -83,6 +89,13 @@ class KalmanFilterNetwork(nn.Module):
 
         if self.R is not None:
             R = torch.eye(state_dim).repeat(N, 1, 1).to(z.device) * self.R
+
+        # SAVING
+        self.dynamics_states = states_pred
+        self.measurement_states = z
+        self.dynamics_sigma = states_pred_Q
+        self.measurement_sigma = R
+        self.dynamics_jac = jac_A
 
         #Kalman Gain
         K_update = torch.bmm(states_sigma_pred, torch.inverse(states_sigma_pred + R))

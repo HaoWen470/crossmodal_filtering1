@@ -122,7 +122,7 @@ class PandaDynamicsModel(dpf.DynamicsModel):
     def forward(self, states_prev, controls, noisy=False):
         # states_prev:  (N, M, state_dim)
         # controls: (N, control_dim)
-        # print("RUNNING DYNAMICS!")
+
         self.jacobian = False
         if self.use_particles:
             assert len(states_prev.shape) == 3  # (N, M, state_dim)
@@ -194,8 +194,6 @@ class PandaDynamicsModel(dpf.DynamicsModel):
         # print("q: ", self.Q)
         # Add noise if desired
         if noisy:
-            # TODO: implement version w/ learnable noise
-            # (via reparemeterization; should be simple)
             dist = torch.distributions.MultivariateNormal(
                 torch.zeros(self.state_dim, dtype=torch.float32).to(states_new.device),
                 self.Q,)
@@ -356,8 +354,7 @@ class PandaEKFMeasurementModel(dpf.MeasurementModel):
 
     def __init__(self, units=128,
                  state_dim=2,
-                 use_states=True,
-                 use_spatial_softmax=False,
+                 use_states=False,
                  missing_modalities=None,
                  add_R_noise = 1e-6):
         super().__init__()
@@ -366,6 +363,7 @@ class PandaEKFMeasurementModel(dpf.MeasurementModel):
         obs_sensors_dim = 7
         image_dim = (32, 32)
 
+        #We do not use states for EKF
         self.state_dim = state_dim
         # if we want to use states in measurement model update
         self.use_states = use_states
@@ -399,7 +397,7 @@ class PandaEKFMeasurementModel(dpf.MeasurementModel):
                 out_channels=2,
                 kernel_size=3,
                 padding=1),
-            nn.Flatten(),  # 32 * 32 * 8
+            nn.Flatten(),  # 32 * 32 * 2
             nn.Linear(2 * 32 * 32, units),
             nn.ReLU(inplace=True),
             resblocks.Linear(units),
@@ -407,25 +405,18 @@ class PandaEKFMeasurementModel(dpf.MeasurementModel):
 
         self.observation_pose_layers = nn.Sequential(
             nn.Linear(obs_pose_dim, units),
-            resblocks.Linear(
-                units,
-                activation='leaky_relu',
-                activations_inplace=False),
+            # nn.ReLU(inplace=True),
+            resblocks.Linear(units),
         )
         self.observation_sensors_layers = nn.Sequential(
             nn.Linear(obs_sensors_dim, units),
-            resblocks.Linear(
-                units,
-                activation='leaky_relu',
-                activations_inplace=False),
-        )
-        self.state_layers = nn.Sequential(
-            nn.Linear(self.state_dim, units),
+            # nn.ReLU(inplace=True),
+            resblocks.Linear(units),
         )
 
         # missing modalities
         self.shared_layers = nn.Sequential(
-            nn.Linear(units * (len(self.modalities) + 1), units * 2),
+            nn.Linear(units * (len(self.modalities)), units * 2),
             nn.ReLU(inplace=True),
             resblocks.Linear(2 * units),
             resblocks.Linear(2 * units),
@@ -435,29 +426,29 @@ class PandaEKFMeasurementModel(dpf.MeasurementModel):
             nn.Linear(units, self.state_dim),
             nn.ReLU(inplace=True),
             resblocks.Linear(
-                self.state_dim,
-                activation='relu',
-                activations_inplace=False),
+                self.state_dim),
+            nn.Linear(self.state_dim, self.state_dim),
+
         )
 
         self.z_layer = nn.Sequential(
             nn.Linear(units, self.state_dim),
             nn.ReLU(inplace=True),
             resblocks.Linear(
-                self.state_dim,
-                activation='relu',
-                activations_inplace=False),
+                self.state_dim),
+            nn.Linear(self.state_dim, self.state_dim),
+
         )
 
         self.units = units
-        for m in self.modules():
-            if isinstance(m, nn.Conv2d) or isinstance(m, nn.ConvTranspose2d):
-                nn.init.kaiming_normal_(m.weight.data)
-                if m.bias is not None:
-                    m.bias.data.zero_()
-            elif isinstance(m, nn.BatchNorm2d):
-                m.weight.data.fill_(1)
-                m.bias.data.zero_()
+        # for m in self.modules():
+        #     if isinstance(m, nn.Conv2d) or isinstance(m, nn.ConvTranspose2d):
+        #         nn.init.kaiming_normal_(m.weight.data)
+        #         if m.bias is not None:
+        #             m.bias.data.zero_()
+        #     elif isinstance(m, nn.BatchNorm2d):
+        #         m.weight.data.fill_(1)
+        #         m.bias.data.zero_()
 
         self.add_R_noise = torch.ones(state_dim) * add_R_noise
 
@@ -488,25 +479,191 @@ class PandaEKFMeasurementModel(dpf.MeasurementModel):
         assert observation_features.shape == (
             N, self.units * len(self.modalities))
 
-        if self.use_states:
-            # (N, units)
-            # (N, state_dim) => (N, units)
-            state_features = self.state_layers(states)
-        else:
-            state_features = self.state_layers(
-                torch.zeros(
-                    states.shape).to(
-                    states.device))
-        assert state_features.shape == (N, self.units)
+        shared_features = self.shared_layers(observation_features)
+        assert shared_features.shape == (N, self.units * 2)
 
-        merged_features = torch.cat(
-            (observation_features, state_features),
-            dim=1)
+        shared_features_z = shared_features[:, :self.units].clone()
+        z = self.z_layer(shared_features_z)
+        assert z.shape == (N, self.state_dim)
+
+        lt_hat = self.r_layer(shared_features[:, self.units:].clone())
+        lt = torch.diag_embed(lt_hat, offset=0, dim1=-2, dim2=-1)
+        assert lt.shape == (N, self.state_dim, self.state_dim)
+
+        R = lt ** 2
+
+        if self.add_R_noise[0] > 0:
+            R += torch.diag(self.add_R_noise).to(R.device)
+
+        return z, R
+
+
+class PandaEKFMeasurementModelSpatial(PandaEKFMeasurementModel):
+    """
+    Measurement model with spatial softmax
+    """
+
+    def __init__(self, units=128,
+                 state_dim=2,
+                 use_states=False,
+                 missing_modalities=None,
+                 add_R_noise = 1e-6):
+
+        super().__init__(units=128,
+                 state_dim=2,
+                 use_states=False,
+                 missing_modalities=None,
+                 add_R_noise = 1e-6)
+
+        self.observation_image_layers = nn.Sequential(
+            nn.Conv2d(
+                in_channels=1,
+                out_channels=32,
+                kernel_size=5,
+                padding=2),
+            nn.ReLU(inplace=True),
+            resblocks.Conv2d(channels=32, kernel_size=3),
+            nn.Conv2d(
+                in_channels=32,
+                out_channels=16,
+                kernel_size=3,
+                padding=1),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(
+                in_channels=16,
+                out_channels=16,
+                kernel_size=3,
+                padding=1),
+            spatial_softmax.SpatialSoftmax(32, 32, 16),
+            nn.Linear(16 * 2, units),
+            nn.ReLU(inplace=True),
+            resblocks.Linear(units),
+        )
+
+
+class PandaEKFMeasurementModelGAP(PandaEKFMeasurementModel):
+    """
+    Measurement model with spatial softmax
+    """
+
+    def __init__(self, units=128,
+                 state_dim=2,
+                 use_states=False,
+                 missing_modalities=None,
+                 add_R_noise = 1e-6):
+
+        super().__init__(units=128,
+                 state_dim=2,
+                 use_states=False,
+                 missing_modalities=None,
+                 add_R_noise = 1e-6)
+
+        self.observation_image_layers = nn.Sequential(
+            nn.Conv2d(
+                in_channels=1,
+                out_channels=32,
+                kernel_size=5,
+                padding=2),
+            nn.ReLU(inplace=True),
+            resblocks.Conv2d(channels=32, kernel_size=3),
+            nn.Conv2d(
+                in_channels=32,
+                out_channels=16,
+                kernel_size=3,
+                padding=1),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(
+                in_channels=16,
+                out_channels=2,
+                kernel_size=3,
+                padding=1),
+            nn.AvgPool2d(5, 3),
+            nn.Flatten(),
+            nn.Linear(10*10* 2, units),
+            nn.ReLU(inplace=True),
+            resblocks.Linear(units),
+        )
+
+class PandaEKFMeasurementModel2GAP(PandaEKFMeasurementModel):
+    """
+    Measurement model with spatial softmax
+    """
+
+    def __init__(self, units=128,
+                 state_dim=2,
+                 use_states=False,
+                 missing_modalities=None,
+                 add_R_noise = 1e-6):
+
+        super().__init__(units=128,
+                 state_dim=2,
+                 use_states=False,
+                 missing_modalities=None,
+                 add_R_noise = 1e-6)
+
+        self.observation_image_layers = nn.Sequential(
+            nn.Conv2d(
+                in_channels=1,
+                out_channels=32,
+                kernel_size=5,
+                padding=2),
+            nn.ReLU(inplace=True),
+            resblocks.Conv2d(channels=32, kernel_size=3),
+            nn.Conv2d(
+                in_channels=32,
+                out_channels=16,
+                kernel_size=3,
+                padding=1),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(
+                in_channels=16,
+                out_channels=2,
+                kernel_size=3,
+                padding=1),
+        )
+        #each avg pool gives us 16x2
+        self.gap_h = nn.AvgPool2d((32,2))
+        self.gap_w = nn.AvgPool2d((2,32))
+
+        self.gap_layers = nn.Sequential(
+            nn.Linear(32*2, units),
+            nn.ReLU(inplace=True),
+            resblocks.Linear(units),
+        )
+
+    def forward(self, observations, states):
+        assert type(observations) == dict
+
+        # N := distinct trajectory count (batch size)
+
+        N = observations['image'].shape[0]
+        assert states.shape == (N, self.state_dim)
+
+        # Construct observations feature vector
+        # (N, obs_dim)
+        obs = []
+        if "image" in self.modalities:
+            x = self.observation_image_layers(
+                observations['image'][:, np.newaxis, :, :])
+            x1 = self.gap_h(x).flatten(1,-1)
+            x2 = self.gap_w(x).flatten(1,-1)
+
+            out = self.gap_layers(torch.cat((x1, x2),-1))
+            obs.append(out)
+        if "gripper_pos" in self.modalities:
+            obs.append(
+                self.observation_pose_layers(
+                    observations['gripper_pos']))
+        if "gripper_sensors" in self.modalities:
+            obs.append(self.observation_sensors_layers(
+                observations['gripper_sensors']))
+
+        observation_features = torch.cat(obs, dim=1)
         # missing modalities
-        assert merged_features.shape == (
-            N, self.units * (len(self.modalities) + 1))
+        assert observation_features.shape == (
+            N, self.units * len(self.modalities))
 
-        shared_features = self.shared_layers(merged_features)
+        shared_features = self.shared_layers(observation_features)
         assert shared_features.shape == (N, self.units * 2)
 
         shared_features_z = shared_features[:, :self.units].clone()

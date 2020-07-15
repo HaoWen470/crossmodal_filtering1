@@ -34,4 +34,4 @@ def denormalize_state(state, state_sigma, mean=[0.4970164, -0.00916641], std=[0.
 
 def denormalize(x, mean, std):
 
-    return x*std+mean
+    return np.array(x)*np.array(std)+np.array(mean)
