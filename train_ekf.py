@@ -44,6 +44,8 @@ if __name__ == '__main__':
     parser.add_argument("--learnable_Q_dyn", action="store_true")
     parser.add_argument("--meas_lr", default=1e-4, type=float)
     parser.add_argument("--measurement", type=str, default='default')
+    parser.add_argument("--lr", default=1e-4, type=float)
+    parser.add_argument("--freeze_dyn", action="store_true")
 
     args = parser.parse_args()
 
@@ -222,7 +224,10 @@ if __name__ == '__main__':
                                                       batch_size=args.batch,
                                                       shuffle=True, num_workers=2)
 
+    buddy.set_learning_rate(args.lr, optimizer_name="ekf")
 
+    if args.freeze_dyn:
+        fannypack.utils.freeze_module(ekf.dynamics_model)
     #TRAIN E2D EKF
     for i in range(args.epochs):
         print("Training ekf epoch", i)
