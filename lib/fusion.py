@@ -140,9 +140,12 @@ class KalmanFusionModel(nn.Module):
             weights = torch.stack([image_weight, force_weight])
             state = self.weighted_average(states_pred, weights)
 
-            return state, state_sigma, weights
+        return state, state_sigma, weights
 
-    def forward(self, states_prev, state_sigma_prev, observations, controls,
+    def forward(self, states_prev,
+                state_sigma_prev,
+                observations,
+                controls,
                 return_all=False):
 
             N, state_dim = states_prev.shape
@@ -153,7 +156,6 @@ class KalmanFusionModel(nn.Module):
                 state_sigma_prev,
                 observations,
                 controls,
-                noisy_dynamics=False,
             )
 
             force_state, force_state_sigma = self.force_model.forward(
@@ -161,7 +163,6 @@ class KalmanFusionModel(nn.Module):
                 state_sigma_prev,
                 observations,
                 controls,
-                noisy_dynamics=False,
             )
 
             state, state_sigma, weights = \

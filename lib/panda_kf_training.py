@@ -232,7 +232,6 @@ def train_fusion(buddy, fusion_model, dataloader, log_interval=2,
                  measurement_init=True,
                  init_state_noise=0.2,
                  one_loss=True,
-                 know_image_blackout=False,
                  nll=False):
     # todo: change loss to selection/mixed
     for batch_idx, batch in enumerate(dataloader):
@@ -250,7 +249,7 @@ def train_fusion(buddy, fusion_model, dataloader, log_interval=2,
 
         if measurement_init:
             state, state_sigma = fusion_model.measurement_only(
-                utils.DictIterator(batch_obs)[:, 0, :], state, know_image_blackout)
+                utils.DictIterator(batch_obs)[:, 0, :], state)
 
         else:
             dist = torch.distributions.Normal(
@@ -273,7 +272,6 @@ def train_fusion(buddy, fusion_model, dataloader, log_interval=2,
                 prev_state_sigma,
                 utils.DictIterator(batch_obs)[:, t, :],
                 batch_controls[:, t, :],
-                know_image_blackout= know_image_blackout,
             )
 
             loss_image = torch.mean((image_state - batch_states[:, t, :]) ** 2)
