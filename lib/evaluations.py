@@ -10,7 +10,7 @@ from lib import dpf, panda_models, panda_datasets, panda_kf_training, omnipush_d
 
 from lib.ekf import KalmanFilterNetwork
 from lib import dpf
-from lib.panda_models import PandaDynamicsModel, PandaEKFMeasurementModel
+from lib.panda_models import PandaDynamicsModel, PandaEKFMeasurementModel, PandaEKFMeasurementModel2GAP
 from lib.fusion import CrossModalWeights
 import lib.panda_kf_training as training
 from lib.fusion import KalmanFusionModel
@@ -34,7 +34,7 @@ def get_actions(trajectories, start_time=0, max_timesteps=300):
 
 
 def rollout_kf(kf_model, trajectories, start_time=0, max_timesteps=300,
-               noisy_dynamics=False, true_initial=True, init_state_noise=0.2,
+               noisy_dynamics=False, true_initial=False, init_state_noise=0.2,
                save_data_name=None):
     # To make things easier, we're going to cut all our trajectories to the
     # same length :)
@@ -173,7 +173,7 @@ def rollout_kf(kf_model, trajectories, start_time=0, max_timesteps=300,
     return predicted_states, actual_states, predicted_sigmas, contact_states
 
 def rollout_kf_full(kf_model, trajectories, start_time=0, max_timesteps=300,
-                    true_initial=True, init_state_noise=0.2,):
+                    true_initial=False, init_state_noise=0.2,):
     # To make things easier, we're going to cut all our trajectories to the
     # same length :)
 
@@ -211,6 +211,7 @@ def rollout_kf_full(kf_model, trajectories, start_time=0, max_timesteps=300,
             initial_states,
             initial_sigmas), device=device)
     else:
+        print("put in measurement model")
         # Put into measurement model!
         dummy_controls = torch.ones((N,) + controls_dim, ).to(device)
         for i in range(N):
@@ -224,15 +225,10 @@ def rollout_kf_full(kf_model, trajectories, start_time=0, max_timesteps=300,
                                            initial_states,
                                            initial_sigmas), device=device)
 
-        states_tuple = kf_model.forward(
-            initial_states,
-            initial_sigmas,
-            initial_obs,
-            dummy_controls,
-            noisy_dynamics=False,
-        )
-        initial_states = states_tuple[0]
-        initial_sigmas = states_tuple[1]
+        state, state_sigma = kf_model.measurement_model.forward(
+            initial_obs, initial_states)
+        initial_states = state
+        initial_sigmas = state_sigma
         predicted_states = [[utils.to_numpy(initial_states[i])]
                             for i in range(len(trajectories))]
 
@@ -329,6 +325,17 @@ def rollout_kf_full(kf_model, trajectories, start_time=0, max_timesteps=300,
     results['actual_states'] = np.array(actual_states)
     results['contact_states'] = np.array(contact_states)
     results['actions'] = np.array(actions)
+
+    predicted_states = np.array(predicted_states)
+    actual_states = np.array(actual_states)
+
+    rmse_x = np.sqrt(np.mean(
+        (predicted_states[:, start_time:, 0] - actual_states[:, start_time:, 0]) ** 2))
+
+    rmse_y = np.sqrt(np.mean(
+        (predicted_states[:, start_time:, 1] - actual_states[:, start_time:, 1]) ** 2))
+
+    print("rsme x: \n{} \n y:\n{}".format(rmse_x, rmse_y))
 
     return results
 
@@ -513,7 +520,7 @@ def init_experiment(experiment_name,
     # Experiment configuration
 
     if fusion_type is None:
-        measurement = PandaEKFMeasurementModel(use_states=False)
+        measurement = PandaEKFMeasurementModel2GAP()
         dynamics = PandaDynamicsModel(use_particles=False, learnable_Q=learnable_Q)
         model = KalmanFilterNetwork(dynamics, measurement)
         optimizer_names = ["ekf", "dynamics", "measurement"]
@@ -578,7 +585,7 @@ def ekf_eval_full(experiment_name,
 
     x = rollout_kf_full(model,
                    eval_trajectories,
-                   true_initial=True,
+                   true_initial=False   ,
                    init_state_noise=0.2)
 
     return x
@@ -605,12 +612,12 @@ def ekf_eval_experiment(experiment_name,
         x = rollout_kf_full(
             model,
             eval_trajectories,
-            true_initial=True,
+            true_initial=False,
             init_state_noise=0.2,)
     else:
         x = rollout_fusion(model,
          eval_trajectories,
-         true_initial=True,
+         true_initial=False,
          init_state_noise=0.2)
 
     return x

@@ -75,9 +75,6 @@ class KalmanFilterNetwork(nn.Module):
             states_prev, controls, noisy=False)
         states_pred_Q = self.dynamics_model.Q
 
-        if self.freeze_dynamics_model:
-            # Don't backprop through frozen models
-            states_pred = states_pred.detach()
         jac_A = self.get_jacobian(self.dynamics_model, states_prev, state_dim, N, controls)
         assert jac_A.shape == (N, state_dim, state_dim)
 
