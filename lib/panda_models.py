@@ -509,11 +509,11 @@ class PandaEKFMeasurementModelSpatial(PandaEKFMeasurementModel):
                  missing_modalities=None,
                  add_R_noise = 1e-6):
 
-        super().__init__(units=128,
-                 state_dim=2,
-                 use_states=False,
-                 missing_modalities=None,
-                 add_R_noise = 1e-6)
+        super().__init__(units,
+                 state_dim,
+                 False,
+                 missing_modalities,
+                 add_R_noise)
 
         self.observation_image_layers = nn.Sequential(
             nn.Conv2d(
@@ -552,11 +552,11 @@ class PandaEKFMeasurementModelGAP(PandaEKFMeasurementModel):
                  missing_modalities=None,
                  add_R_noise = 1e-6):
 
-        super().__init__(units=128,
-                 state_dim=2,
-                 use_states=False,
-                 missing_modalities=None,
-                 add_R_noise = 1e-6)
+        super().__init__(units,
+                 state_dim,
+                 False,
+                 missing_modalities,
+                 add_R_noise)
 
         self.observation_image_layers = nn.Sequential(
             nn.Conv2d(
@@ -595,11 +595,11 @@ class PandaEKFMeasurementModel2GAP(PandaEKFMeasurementModel):
                  missing_modalities=None,
                  add_R_noise = 1e-6):
 
-        super().__init__(units=128,
-                 state_dim=2,
+        super().__init__(units=units,
+                 state_dim=state_dim,
                  use_states=False,
-                 missing_modalities=None,
-                 add_R_noise = 1e-6)
+                 missing_modalities=missing_modalities,
+                 add_R_noise = add_R_noise)
 
         self.observation_image_layers = nn.Sequential(
             nn.Conv2d(
@@ -638,7 +638,6 @@ class PandaEKFMeasurementModel2GAP(PandaEKFMeasurementModel):
 
         N = observations['image'].shape[0]
         assert states.shape == (N, self.state_dim)
-
         # Construct observations feature vector
         # (N, obs_dim)
         obs = []
