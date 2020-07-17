@@ -67,9 +67,8 @@ if __name__ == '__main__':
         'many loss': args.many_loss,
         'sequential_image_rate': args.sequential_image,
         'start_timestep': args.start_timestep,
-        'measurement_nll': args.measurement_nll,
-        'ekf_nll': args.ekf_nll,
-        'fusion_nll': args.measurement_nll,
+        'measurement_loss': args.meas_loss,
+        'ekf_loss': args.ekf_loss,
         'learnable_Q': args.learnable_Q,
         'obs_only': args.obs_only,
 
