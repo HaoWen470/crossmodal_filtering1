@@ -4,7 +4,7 @@ from lib import panda_datasets, omnipush_datasets
 from lib.ekf import KalmanFilterNetwork
 from fannypack import utils
 from lib import dpf
-from lib.panda_models import PandaDynamicsModel, PandaEKFMeasurementModel
+from lib.panda_models import PandaDynamicsModel, PandaEKFMeasurementModel2GAP
 
 from lib.fusion import KalmanFusionModel
 from lib.fusion import CrossModalWeights
@@ -15,17 +15,17 @@ import gc
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--experiment_name",
-        type=str,
-        default="fusion",
-    )
+    parser.add_argument('-n',
+                        "--experiment_name",
+                        type=str,
+                        default="fusion",
+                        )
     parser.add_argument("--data_size", type=int, default=1000, choices=[10, 100, 1000])
     parser.add_argument("--batch", type=int, default=128)
     parser.add_argument("--pretrain", type=int, default=5)
     parser.add_argument("--epochs", type=int, default=15)
-    parser.add_argument("--fusion_type", type=str, choices=["weighted", "poe", "sigma"], default="weighted")
-    parser.add_argument("--train", type=str, choices=[ "all", "fusion", "ekf"], default="all")
+    parser.add_argument("--fusion_type", type=str, choices=["cross", "uni"], default="cross")
+    parser.add_argument("--train", type=str, choices=["all", "fusion", "ekf"], default="all")
     parser.add_argument("--load_checkpoint", type=str, default=None)
     parser.add_argument("--module_type", type=str, default="all", choices=["all", "ekf"])
     parser.add_argument("--blackout", type=float, default=0.0)
@@ -37,13 +37,14 @@ if __name__ == '__main__':
     parser.add_argument("--init_state_noise", type=float, default=0.2)
     parser.add_argument("--sequential_image", type=int, default=1)
     parser.add_argument("--start_timestep", type=int, default=0)
-    parser.add_argument("--old_weighting", action="store_true")
     parser.add_argument("--no_proprio", action="store_true")
-    parser.add_argument("--measurement_nll", action="store_true")
-    parser.add_argument("--ekf_null", action="store_true")
-    parser.add_argument("--fusion_nll", action="store_true")
     parser.add_argument("--learnable_Q", action="store_true")
     parser.add_argument("--obs_only", action="store_true")
+    parser.add_argument("--meas_loss", choices=['mse', 'nll', 'mixed'], default="mse")
+    parser.add_argument("--ekf_loss", choices=['mse', 'nll', 'mixed'], default="mse")
+    parser.add_argument("--meas_lr", default=1e-5, type=float)
+    parser.add_argument("--ekf_lr", default=5e-6, type=float)
+    parser.add_argument("--freeze_dyn", action="store_true")
 
     args = parser.parse_args()
 
@@ -74,24 +75,22 @@ if __name__ == '__main__':
 
     }
     # image_modality_model
-    image_measurement = PandaEKFMeasurementModel(missing_modalities=['gripper_sensors'],
-                                                 units=args.hidden_units, use_states= not args.obs_only)
+
+    image_measurement = PandaEKFMeasurementModel2GAP(missing_modalities=['gripper_sensors'],
+                                                     units=args.hidden_units, )
     image_dynamics = PandaDynamicsModel(use_particles=False, learnable_Q=args.learnable_Q)
     image_model = KalmanFilterNetwork(image_dynamics, image_measurement)
 
     # force_modality_model
-    force_measurement = PandaEKFMeasurementModel(missing_modalities=['image'],
-                                                 units=args.hidden_units,
-                                                 use_states= not args.obs_only)
-    force_dynamics = PandaDynamicsModel(use_particles=False, learnable_Q=args.learnable_Q)
+    force_measurement = PandaEKFMeasurementModel2GAP(missing_modalities=['image'],
+                                                     units=args.hidden_units,
+                                                     )
+    force_dynamics = PandaDynamicsModel(use_particles=False,
+                                        learnable_Q=args.learnable_Q)
     force_model = KalmanFilterNetwork(force_dynamics, force_measurement)
 
-    if args.old_weighting:
-        weight_dim = 1
-    else:
-        weight_dim=2
-    #weight model and fusion model
-    weight_model = CrossModalWeights(state_dim=weight_dim, old_weighting=args.old_weighting)
+    # weight model and fusion model
+    weight_model = CrossModalWeights(state_dim=2)
 
     if args.sequential_image > 1:
         know_image_blackout = True
@@ -101,7 +100,6 @@ if __name__ == '__main__':
 
     fusion_model = KalmanFusionModel(image_model, force_model, weight_model,
                                      fusion_type=args.fusion_type,
-                                     old_weighting=args.old_weighting,
                                      know_image_blackout=know_image_blackout)
 
     buddy = fannypack.utils.Buddy(experiment_name,
@@ -110,22 +108,19 @@ if __name__ == '__main__':
                                                    "dynamics", "dynamics_recurr",
                                                    "force_ekf", "im_ekf",
                                                    "fusion"],
-                                  #load_checkpoint=True,
                                   )
     buddy.add_metadata(dataset_args)
 
     if args.load_checkpoint is not None:
         if args.module_type == "all":
-            buddy.load_checkpoint(path = args.load_checkpoint)
+            buddy.load_checkpoint(path=args.load_checkpoint)
         if args.module_type == "ekf":
-            buddy.load_checkpoint_module(source="image_model", path=args.load_checkpoint)
-            buddy.load_checkpoint_module(source="force_model", path=args.load_checkpoint)
+            buddy.load_checkpoint_module(source="image_model",
+                                         path=args.load_checkpoint)
+            buddy.load_checkpoint_module(source="force_model",
+                                         path=args.load_checkpoint)
 
     print("Creating dataset...")
-    # dataset_full = panda_datasets.PandaParticleFilterDataset(
-    #     'data/gentle_push_10.hdf5',
-    #     subsequence_length=16,
-    #     **dataset_args)
 
     if args.omnipush:
         e2e_trainset = omnipush_datasets.OmnipushParticleFilterDataset(
@@ -135,8 +130,6 @@ if __name__ == '__main__':
             "simpler/train3.hdf5",
             "simpler/train4.hdf5",
             "simpler/train5.hdf5",
-
-
             subsequence_length=16,
             particle_count=1,
             particle_stddev=(.03, .03),
@@ -150,8 +143,6 @@ if __name__ == '__main__':
             "simpler/train3.hdf5",
             "simpler/train4.hdf5",
             "simpler/train5.hdf5",
-
-
             subsequence_length=16,
             stddev=(0.5, 0.5),
             samples_per_pair=20,
@@ -164,8 +155,6 @@ if __name__ == '__main__':
             "simpler/train3.hdf5",
             "simpler/train4.hdf5",
             "simpler/train5.hdf5",
-
-
             subsequence_length=32,
             **dataset_args
         )
@@ -177,7 +166,6 @@ if __name__ == '__main__':
             "simpler/train3.hdf5",
             "simpler/train4.hdf5",
             "simpler/train5.hdf5",
-
             subsequence_length=16,
             **dataset_args)
     else:
@@ -207,10 +195,9 @@ if __name__ == '__main__':
             subsequence_length=16,
             **dataset_args)
 
-    #train everything
+    # train everything
     if args.train == "all":
         # training dynamics model
-
         dataloader_dynamics = torch.utils.data.DataLoader(
             dataset_dynamics, batch_size=args.batch, shuffle=True, num_workers=2, drop_last=True)
 
@@ -220,6 +207,10 @@ if __name__ == '__main__':
                                     dataloader_dynamics, optim_name="dynamics")
             print()
 
+        buddy.save_checkpoint("temp_1")
+        buddy.load_checkpoint_module(source="image_model.dynamics_model",
+                                     target="force_model.dynamics_model",
+                                     label="temp_1")
         buddy.save_checkpoint("phase_0_dynamics_pretrain")
 
         # recurrence pretrain
@@ -232,64 +223,84 @@ if __name__ == '__main__':
                                               dataloader_dynamics_recurr, optim_name="dynamics_recurr")
             print()
 
-
-        buddy.save_checkpoint("phase_1_dynamics_recurrent_pretrain")
-        #load force model from image model dynamics
+        buddy.save_checkpoint("temp_2")
         buddy.load_checkpoint_module(source="image_model.dynamics_model",
                                      target="force_model.dynamics_model",
-                                     label="phase_1_dynamics_recurrent_pretrain")
+                                     label="temp_2")
+        buddy.save_checkpoint('phase_1_dynamics_recurrent_pretrain')
 
+        # training measurement model
         measurement_trainset_loader = torch.utils.data.DataLoader(
             dataset_measurement,
-            batch_size=args.batch*2,
+            batch_size=args.batch,
             shuffle=True,
             num_workers=8)
 
-        for i in range(int(args.pretrain/2)):
-            print("Training measurement epoch", i)
-            training.train_measurement(buddy, image_model, measurement_trainset_loader,
+        buddy.set_learning_rate(args.meas_lr,
+                                optimizer_name="force_meas")
+
+        buddy.set_learning_rate(args.meas_lr,
+                                optimizer_name="im_meas")
+
+        for i in range(int(args.pretrain)):
+            print("Training img measurement epoch", i)
+            training.train_measurement(buddy, image_model,
+                                       measurement_trainset_loader,
                                        log_interval=20, optim_name="im_meas",
-                                       checkpoint_interval= 10000,
-                                       nll=args.measurement_nll)
-            training.train_measurement(buddy, force_model, measurement_trainset_loader,
-                                       log_interval=20, optim_name="force_meas",
-                                       checkpoint_interval= 10000,
-                                       nll=args.measurement_nll)
+                                       checkpoint_interval=10000,
+                                       loss_type=args.meas_loss)
             print()
+        for i in range(int(args.pretrain)):
+            print("Training force measurement epoch", i)
+
+            training.train_measurement(buddy, force_model,
+                                       measurement_trainset_loader,
+                                       log_interval=20, optim_name="force_meas",
+                                       checkpoint_interval=10000,
+                                       loss_type=args.meas_loss)
 
         buddy.save_checkpoint("phase_2_measurement_pretrain")
 
-
-    e2e_trainset_loader = torch.utils.data.DataLoader(e2e_trainset, batch_size=args.batch,
-                                                      shuffle=True, num_workers=2)
-
-    #train ekf (or all)
-    # image_model.freeze_dynamics_model = True
-    # force_model.freeze_dynamics_model = True
-    # image_model.freeze_measurement_model = False
-    # force_model.freeze_measurement_model = False
+    # train e2e ekf
 
     if args.train == "all" or args.train == "ekf":
+        e2e_trainset_loader = torch.utils.data.DataLoader(e2e_trainset,
+                                                          batch_size=args.batch,
+                                                          shuffle=True,
+                                                          num_workers=2)
+        buddy.set_learning_rate(args.ekf_lr,
+                                optimizer_name="force_ekf")
+        buddy.set_learning_rate(args.ekf_lr,
+                                optimizer_name="im_ekf")
+        if args.freeze_dyn:
+            fannypack.utils.freeze_module(image_model.dynamics_model)
+            fannypack.utils.freeze_module(force_model.dynamics_model)
+
         for i in range(args.pretrain):
-            print("Training ekf epoch", i)
+            print("Training force ekf epoch", i)
             training.train_e2e(buddy, force_model,
                                e2e_trainset_loader,
                                optim_name="force_ekf",
-                               nll=args.ekf_nll)
-            training.train_e2e(buddy, image_model, e2e_trainset_loader, optim_name="im_ekf",
-                               nll=args.ekf_nll)
+                               loss_type=args.ekf_loss)
+
+        for i in range(args.pretrain):
+            print("Training img ekf epoch", i)
+            training.train_e2e(buddy, image_model,
+                               e2e_trainset_loader,
+                               optim_name="im_ekf",
+                               loss_type=args.ekf_loss)
 
         buddy.save_checkpoint("phase_3_e2e")
-        buddy.save_checkpoint()
 
-    buddy.set_learning_rate(args.lr, optimizer_name="fusion")
     # train fusion
+    buddy.set_learning_rate(args.lr, optimizer_name="fusion")
+
     for i in range(args.epochs):
         print("Training fusion epoch", i)
 
         training.train_fusion(buddy, fusion_model, e2e_trainset_loader,
-                              optim_name="fusion", one_loss= not args.many_loss,
-                              init_state_noise=args.init_state_noise,
-                              nll=args.fusion_nll)
-        buddy.save_checkpoint()
+                              optim_name="fusion",
+                              one_loss=not args.many_loss,
+                              init_state_noise=args.init_state_noise,)
+
     buddy.save_checkpoint("phase_4_fusion")

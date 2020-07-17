@@ -228,8 +228,12 @@ def train_e2e(buddy, ekf_model, dataloader,
                 # buddy.log_model_weights_hist()
 
 def train_fusion(buddy, fusion_model, dataloader, log_interval=2,
-                 optim_name="fusion", measurement_init=True, init_state_noise=0.2,
-                 one_loss=True, know_image_blackout=False, nll=False):
+                 optim_name="fusion",
+                 measurement_init=True,
+                 init_state_noise=0.2,
+                 one_loss=True,
+                 know_image_blackout=False,
+                 nll=False):
     # todo: change loss to selection/mixed
     for batch_idx, batch in enumerate(dataloader):
         # Transfer to GPU and pull out batch data
@@ -247,6 +251,7 @@ def train_fusion(buddy, fusion_model, dataloader, log_interval=2,
         if measurement_init:
             state, state_sigma = fusion_model.measurement_only(
                 utils.DictIterator(batch_obs)[:, 0, :], state, know_image_blackout)
+
         else:
             dist = torch.distributions.Normal(
                 torch.tensor([0.]), torch.ones(state.shape)*init_state_noise)
@@ -262,8 +267,6 @@ def train_fusion(buddy, fusion_model, dataloader, log_interval=2,
         for t in range(1, timesteps-1):
             prev_state = state
             prev_state_sigma = state_sigma
-
-            # print("input: ", state[0], state_sigma[0])
 
             state, state_sigma, force_state, image_state = fusion_model.forward(
                 prev_state,
@@ -293,7 +296,6 @@ def train_fusion(buddy, fusion_model, dataloader, log_interval=2,
 
         loss = torch.mean(torch.stack(losses_total))
 
-        # print("loss: ", loss)
         buddy.minimize(
             loss,
             optimizer_name= optim_name,
@@ -305,106 +307,5 @@ def train_fusion(buddy, fusion_model, dataloader, log_interval=2,
                 buddy.log("Image loss",  np.mean(np.array(losses_image)))
                 buddy.log("Force loss",  np.mean(np.array(losses_force)))
                 buddy.log("Fused loss",  np.mean(np.array(losses_fused)))
-                # buddy.log_model_grad_hist()
-                # buddy.log_model_weights_hist()
-
-
-
-def eval_rollout(predicted_states, actual_states, plot=False, plot_traj=None, start=0):
-
-    rmse_x = np.sqrt(np.mean(
-                (predicted_states[:, start:, 0] - actual_states[:, start:, 0]) ** 2))
-    
-    rmse_y = np.sqrt(np.mean(
-            (predicted_states[:, start:, 1] - actual_states[:, start:, 1]) ** 2))
-    
-    print("rsme x: \n{} \n y:\n{}".format(rmse_x, rmse_y))
-    if plot:
-        timesteps = len(actual_states[0])
-
-        def color(i):
-            colors = ['b', 'g', 'r', 'c', 'm', 'y', 'k']
-            return colors[i % len(colors)]
-
-        state_dim = actual_states.shape[-1]
-        for j in range(state_dim):
-            plt.figure(figsize=(8, 6))
-            for i, (pred, actual) in enumerate(
-                    zip(predicted_states, actual_states)):
-
-                if plot_traj is not None and i not in plot_traj:
-                    continue
-
-                predicted_label_arg = {}
-                actual_label_arg = {}
-                if i == 0:
-                    predicted_label_arg['label'] = "Predicted"
-                    actual_label_arg['label'] = "Ground Truth"
-                plt.plot(range(timesteps-start),
-                         pred[start:, j],
-                         c=color(i),
-                         alpha=0.3,
-                         **predicted_label_arg)
-                plt.plot(range(timesteps-start),
-                         actual[start:, j],
-                         c=color(i),
-                         **actual_label_arg)
-
-            rmse = np.sqrt(np.mean(
-                (predicted_states[:, start:, j] - actual_states[:, start:, j]) ** 2))
-
-            plt.title(f"State #{j} // RMSE = {rmse}")
-            plt.xlabel("Timesteps")
-            plt.ylabel("Value")
-            plt.legend()
-            plt.show()
-
-            print(f"State #{j} // RMSE = {rmse}")
-
-
-
-def eval_2d_rollout(predicted_states, actual_states, plot=False, plot_traj=None, start=0):
-
-    if plot:
-        timesteps = len(actual_states[0])
-
-        def color(i):
-            colors = ['b', 'g', 'r', 'c', 'm', 'y', 'k']
-            return colors[i % len(colors)]
-
-        state_dim = actual_states.shape[-1]
-        
-        plt.figure(figsize=(8, 6))
-        for i, (pred, actual) in enumerate(
-                zip(predicted_states, actual_states)):
-
-            if plot_traj is not None and i not in plot_traj:
-                continue
-
-            predicted_label_arg = {}
-            actual_label_arg = {}
-            if i == 0:
-                predicted_label_arg['label'] = "Predicted"
-                actual_label_arg['label'] = "Ground Truth"
-            plt.plot(pred[start:, 0],
-                     pred[start:, 1],
-                     c=color(i),
-                     alpha=0.3,
-                     **predicted_label_arg)
-            plt.plot(actual[start:, 0],
-                     actual[start:, 1],
-                     c=color(i),
-                     **actual_label_arg)
-
-            rmse = np.sqrt(np.mean(
-                (predicted_states[:, start:] - actual_states[:, start:]) ** 2))
-
-        plt.title(f"x vs. y // RMSE = {rmse}")
-        plt.xlabel("Timesteps")
-        plt.ylabel("Value")
-        plt.legend()
-        plt.show()
-
-
-
+                buddy.log_model_grad_norm()
 

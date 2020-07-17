@@ -14,58 +14,60 @@ from lib import utility
 class KalmanFusionModel(nn.Module):
 
     def __init__(self, image_model, force_model,
-                 weight_model, fusion_type="weighted", old_weighting=False, know_image_blackout=False):
+                 weight_model, fusion_type="cross", know_image_blackout=False):
         super().__init__()
 
         self.image_model = image_model
         self.force_model = force_model
         self.weight_model = weight_model
         self.fusion_type = fusion_type
-        self.old_weighting = old_weighting
 
         self.state_dim = self.image_model.measurement_model.state_dim
 
-        self.safety = False
         self.know_image_blackout = know_image_blackout
 
-        assert self.fusion_type in ["weighted", "poe", "sigma"]
+        assert self.fusion_type in ["cross", "uni"]
 
     def measurement_only(self, observations, states_prev):
-        force_beta, image_beta = self.weight_model.forward(observations)
-        force_state, force_state_sigma = self.force_model.measurement_model.forward(observations, states_prev)
-        image_state, image_state_sigma = self.image_model.measurement_model.forward(observations, states_prev)
+        force_state, force_state_sigma = \
+            self.force_model.measurement_model.forward(observations, states_prev)
+        image_state, image_state_sigma = \
+            self.image_model.measurement_model.forward(observations, states_prev)
 
-        state, state_sigma, _ = self.get_weighted_states(observations, force_state, force_state_sigma,
-                                 image_state, image_state_sigma)
+        state, state_sigma, _ = \
+            self.get_weighted_states(observations,
+                                     force_state,
+                                     force_state_sigma,
+                                     image_state,
+                                     image_state_sigma)
 
         return state, state_sigma
 
-    def get_weighted_states(self, observations, force_state,
-                            force_state_sigma, image_state, image_state_sigma):
+    def get_weighted_states(self, observations,
+                            force_state,
+                            force_state_sigma,
+                            image_state,
+                            image_state_sigma):
 
         N, state_dim = force_state.shape
+        device = force_state.device
+        states_pred = torch.stack([image_state, force_state])
+        state_sigma_pred = torch.stack(
+            [image_state_sigma, force_state_sigma])
 
-        force_beta, image_beta = self.weight_model.forward(observations)
-        # print(force_beta.shape)
-        # print(image_beta.shape)
-        device = force_beta.device
-        if self.know_image_blackout:
-            blackout_indices = torch.sum(torch.abs(
-                observations['image'].reshape((N, -1))), dim=1) < 1e-3
+        if self.fusion_type == "cross":
+            force_beta, image_beta = self.weight_model.forward(observations)
 
-            mask_shape = (N, 1)
-            mask = torch.ones(mask_shape, device=device)
-            mask[blackout_indices] = 0
+            if self.know_image_blackout:
+                blackout_indices = torch.sum(torch.abs(
+                    observations['image'].reshape((N, -1))), dim=1) < 1e-3
 
-            image_beta_new = torch.zeros(mask_shape, device=device)
-            if self.fusion_type == "poe":
-                image_beta_new[blackout_indices] = 1 - 1e-9
-                image_beta = image_beta_new + mask * image_beta
+                mask_shape = (N, 1)
+                mask = torch.ones(mask_shape, device=device)
+                mask[blackout_indices] = 0
 
-                force_beta_new = torch.zeros(mask_shape, device=device)
-                force_beta_new[blackout_indices] = 1e-9
-                force_beta = force_beta_new + mask * force_beta
-            else:
+                image_beta_new = torch.zeros(mask_shape, device=device)
+
                 image_beta_new[blackout_indices] = 1e-9
                 image_beta = image_beta_new + mask * image_beta
 
@@ -73,39 +75,28 @@ class KalmanFusionModel(nn.Module):
                 force_beta_new[blackout_indices] = 1. - 1e-9
                 force_beta = force_beta_new + mask * force_beta
 
-        # if self.old_weighting:
-        #     assert force_beta.shape == states_prev.shape
-        # else:
-        #     assert force_beta.shape[-1] == states_prev.shape[-1] + 1
+            weights = torch.stack([image_beta[:, 0:state_dim],
+                                   force_beta[:, 0:state_dim]])
 
-        weights = torch.stack([image_beta[:, 0:state_dim], force_beta[:, 0:state_dim]])
-        weights_for_sigma = [torch.diag_embed(image_beta[:, 0:state_dim], offset=0, dim1=-2, dim2=-1),
-                             torch.diag_embed(force_beta[:, 0:state_dim], offset=0, dim1=-2, dim2=-1)]
-        # todo: this only works for state dim =2
-        if not self.old_weighting:
+            # weights for sigma
+            weights_for_sigma = [torch.diag_embed(image_beta[:, 0:state_dim], offset=0, dim1=-2, dim2=-1),
+                                 torch.diag_embed(force_beta[:, 0:state_dim], offset=0, dim1=-2, dim2=-1)]
+
+            # todo: this only works for state dim =2, can use lower triangle for more dim?
+            # setting diagonals
             weights_for_sigma[0][:, 0, 1] = image_beta[:, -1]
             weights_for_sigma[0][:, 1, 0] = image_beta[:, -1]
 
             weights_for_sigma[1][:, 0, 1] = force_beta[:, -1]
             weights_for_sigma[1][:, 1, 0] = force_beta[:, -1]
 
-        weights_for_sigma = torch.stack(weights_for_sigma)
-        states_pred = torch.stack([image_state, force_state])
-        state_sigma_pred = torch.stack(
-            [image_state_sigma, force_state_sigma])
+            weights_for_sigma = torch.stack(weights_for_sigma)
 
-        if self.fusion_type == "weighted":
             state = self.weighted_average(states_pred, weights)
             state_sigma = self.weighted_average(
                 state_sigma_pred, weights_for_sigma)
-        elif self.fusion_type == "poe":
-            # print(weights.shape)
-            # print(states_pred.shape)
-            state = self.product_of_experts(states_pred, weights)
-            state_sigma = self.weighted_average(
-                state_sigma_pred, weights_for_sigma)
-        elif self.fusion_type == "sigma":
 
+        else:
             #todo: is it necessary to blackout diagonals for new sigma?
 
             image_mat = image_state_sigma.clone()
@@ -162,7 +153,7 @@ class KalmanFusionModel(nn.Module):
                 state_sigma_prev,
                 observations,
                 controls,
-                noisy_dynamics=True,
+                noisy_dynamics=False,
             )
 
             force_state, force_state_sigma = self.force_model.forward(
@@ -170,7 +161,7 @@ class KalmanFusionModel(nn.Module):
                 state_sigma_prev,
                 observations,
                 controls,
-                noisy_dynamics=True,
+                noisy_dynamics=False,
             )
 
             state, state_sigma, weights = \
@@ -181,8 +172,6 @@ class KalmanFusionModel(nn.Module):
                                          image_state_sigma,)
 
             if return_all:
-                # return state, state_sigma,force_stat, image_state,
-                # force_beta, image_beta
                 return state, state_sigma, force_state, image_state, weights[1], weights[0]
 
             return state, state_sigma, force_state, image_state
@@ -194,27 +183,22 @@ class KalmanFusionModel(nn.Module):
         weights = weights / (torch.sum(weights, dim=0) + 1e-9)
         weighted_average = torch.sum(weights * predictions, dim=0)
 
-        # print("pred: ", predictions)
-        # print("weights" , weights)
-        # print("avg:" , weighted_average)
         return weighted_average
 
-    def product_of_experts(self, predictions: list, weights: list):
-        assert predictions.shape == weights.shape
-        T = 1.0 / (weights + 1e-9)
-        mu = (predictions * T).sum(0) * (1.0 / T.sum(0))
-        var = (1.0 / T.sum(0))
-        return mu
+    # def product_of_experts(self, predictions: list, weights: list):
+    #     assert predictions.shape == weights.shape
+    #     T = 1.0 / (weights + 1e-9)
+    #     mu = (predictions * T).sum(0) * (1.0 / T.sum(0))
+    #     var = (1.0 / T.sum(0))
+    #     return mu
 
 class ConstantWeights(nn.Module):
-    def __init__(self, state_dim=2, use_softmax=True, use_log_softmax=True, old_weighting=True):
+    def __init__(self, state_dim=2, use_softmax=True, use_log_softmax=True,):
         super().__init__()
 
         assert use_softmax
         self.use_log_softmax = use_log_softmax
 
-        if old_weighting:
-            state_dim -= 1
         self.state_dim = state_dim
         self.logits = nn.Parameter(torch.zeros((1, 2, self.state_dim + 1)))
 
@@ -236,14 +220,12 @@ class ConstantWeights(nn.Module):
 
         return image_beta, force_prop_beta
 
+
 class CrossModalWeights(nn.Module):
 
     def __init__(self, state_dim=2, units=32, use_softmax=True,
-                 use_log_softmax=False, old_weighting=True):
+                 use_log_softmax=False):
         super().__init__()
-
-        if old_weighting:
-            state_dim -= 1
 
         obs_pose_dim = 3
         obs_sensors_dim = 7
@@ -275,6 +257,7 @@ class CrossModalWeights(nn.Module):
             nn.ReLU(inplace=True),
             resblocks.Linear(units),
         )
+
         self.observation_pose_layers = nn.Sequential(
             nn.Linear(obs_pose_dim, units),
             resblocks.Linear(units, activation='leaky_relu'),
@@ -285,7 +268,7 @@ class CrossModalWeights(nn.Module):
         )
 
         # todo: the +1 only works for state dim =2
-        # it should be + (state_dim)(state_dim-1)/2
+        # it should be self.state_dim + (state_dim)(state_dim-1)/2
 
         if self.use_softmax:
             self.shared_layers = nn.Sequential(
@@ -316,13 +299,6 @@ class CrossModalWeights(nn.Module):
                 nn.Linear(units, self.state_dim),
                 nn.Sigmoid(),
             )
-
-            # self.fusion_layer = nn.Sequential(
-            #     nn.Linear(units, units),
-            #     nn.ReLU(inplace=True),
-            #     nn.Linear(units, self.state_dim+1),
-            #     nn.Sigmoid(),
-            # )
 
         for m in self.modules():
             if isinstance(m, nn.Conv2d) or isinstance(m, nn.ConvTranspose2d):
