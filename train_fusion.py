@@ -71,6 +71,9 @@ if __name__ == '__main__':
         'ekf_loss': args.ekf_loss,
         'learnable_Q': args.learnable_Q,
         'obs_only': args.obs_only,
+        'freeze_dyn': args.freeze_dyn,
+        'meas_lr': args.meas_lr,
+        'ekf_lr': args.ekf_lr,
 
     }
     # image_modality_model
@@ -260,13 +263,14 @@ if __name__ == '__main__':
 
         buddy.save_checkpoint("phase_2_measurement_pretrain")
 
-    # train e2e ekf
+    e2e_trainset_loader = torch.utils.data.DataLoader(e2e_trainset,
+                                                      batch_size=args.batch,
+                                                      shuffle=True,
+                                                      num_workers=2)
 
+    # train e2e ekf
     if args.train == "all" or args.train == "ekf":
-        e2e_trainset_loader = torch.utils.data.DataLoader(e2e_trainset,
-                                                          batch_size=args.batch,
-                                                          shuffle=True,
-                                                          num_workers=2)
+
         buddy.set_learning_rate(args.ekf_lr,
                                 optimizer_name="force_ekf")
         buddy.set_learning_rate(args.ekf_lr,
