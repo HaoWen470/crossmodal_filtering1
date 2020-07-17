@@ -197,7 +197,6 @@ def train_e2e(buddy, ekf_model, dataloader,
 
             assert state.shape == batch_states[:, t, :].shape
 
-
             mse = torch.mean((state - batch_states[:, t, :]) ** 2)
 
             assert loss_type in ['nll', 'mse', 'mixed']
@@ -229,7 +228,7 @@ def train_e2e(buddy, ekf_model, dataloader,
                 # buddy.log_model_weights_hist()
 
 def train_fusion(buddy, fusion_model, dataloader, log_interval=2,
-                 optim_name="fusion", measurement_init=False, init_state_noise=0.2,
+                 optim_name="fusion", measurement_init=True, init_state_noise=0.2,
                  one_loss=True, know_image_blackout=False, nll=False):
     # todo: change loss to selection/mixed
     for batch_idx, batch in enumerate(dataloader):
