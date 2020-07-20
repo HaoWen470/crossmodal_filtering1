@@ -89,8 +89,8 @@ def rollout_kf(kf_model, trajectories, start_time=0, max_timesteps=300,
             initial_sigmas,
             initial_obs,
             dummy_controls,
-            noisy_dynamics=False,
         )
+
         initial_states = states_tuple[0]
         initial_sigmas = states_tuple[1]
         predicted_states = [[utils.to_numpy(initial_states[i])]
@@ -341,7 +341,7 @@ def rollout_kf_full(kf_model, trajectories, start_time=0, max_timesteps=300,
 
 
 def rollout_fusion(kf_model, trajectories, start_time=0, max_timesteps=300,
-                   dynamics=True, true_initial=True, init_state_noise=0.2,
+                   dynamics=True, true_initial=False, init_state_noise=0.2,
                    save_data_name=None):
     # To make things easier, we're going to cut all our trajectories to the
     # same length :)
@@ -387,12 +387,10 @@ def rollout_fusion(kf_model, trajectories, start_time=0, max_timesteps=300,
                                            initial_states,
                                            initial_sigmas), device=device)
 
-        states_tuple = kf_model.forward(
-            initial_states,
-            initial_sigmas,
+        states_tuple = kf_model.measurement_only(
             initial_obs,
-            dummy_controls,
-            noisy_dynamics=False,
+            initial_states,
+
         )
         initial_states = states_tuple[0]
         initial_sigmas = states_tuple[1]
@@ -485,29 +483,37 @@ def rollout_fusion(kf_model, trajectories, start_time=0, max_timesteps=300,
     predicted_force_states = np.array(predicted_force_states)
     predicted_image_states = np.array(predicted_image_states)
 
-    if save_data_name is not None:
-        import h5py
-        filename = "rollout/" + save_data_name + ".h5"
+    rmse_x = np.sqrt(np.mean(
+        (predicted_states[:, start_time:, 0] - actual_states[:, start_time:, 0]) ** 2))
 
-        try:
-            f = h5py.File(filename, 'w')
-        except:
-            import os
-            new_dest = "rollout/old/{}.h5".format(save_data_name)
-            os.rename(filename, new_dest)
-            f = h5py.File(filename, 'w')
+    rmse_y = np.sqrt(np.mean(
+        (predicted_states[:, start_time:, 1] - actual_states[:, start_time:, 1]) ** 2))
 
-        f.create_dataset("predicted_states", data=predicted_states)
-        f.create_dataset("actual_states", data=actual_states)
-        f.create_dataset("contact_states", data=contact_states)
+    print("rsme x: \n{} \n y:\n{}".format(rmse_x, rmse_y))
 
-        f.create_dataset("predicted_sigmas", data=predicted_sigmas)
-        f.create_dataset("image_betas", data=predicted_image_betas)
-        f.create_dataset("force_betas", data=predicted_force_betas)
-        f.create_dataset("force_states", data=predicted_force_states)
-        f.create_dataset("image_states", data=predicted_image_states)
-
-        f.close()
+    # if save_data_name is not None:
+    #     import h5py
+    #     filename = "rollout/" + save_data_name + ".h5"
+    #
+    #     try:
+    #         f = h5py.File(filename, 'w')
+    #     except:
+    #         import os
+    #         new_dest = "rollout/old/{}.h5".format(save_data_name)
+    #         os.rename(filename, new_dest)
+    #         f = h5py.File(filename, 'w')
+    #
+    #     f.create_dataset("predicted_states", data=predicted_states)
+    #     f.create_dataset("actual_states", data=actual_states)
+    #     f.create_dataset("contact_states", data=contact_states)
+    #
+    #     f.create_dataset("predicted_sigmas", data=predicted_sigmas)
+    #     f.create_dataset("image_betas", data=predicted_image_betas)
+    #     f.create_dataset("force_betas", data=predicted_force_betas)
+    #     f.create_dataset("force_states", data=predicted_force_states)
+    #     f.create_dataset("image_states", data=predicted_image_states)
+    #
+    #     f.close()
 
     return predicted_states, actual_states,
     (predicted_sigmas, predicted_force_states, predicted_image_states, predicted_force_betas, predicted_image_betas)
@@ -516,7 +522,8 @@ def init_experiment(experiment_name,
                     fusion_type=None,
                     omnipush=False,
                     learnable_Q=False,
-                    load_checkpoint=None):
+                    load_checkpoint=None,
+                    units=64):
     # Experiment configuration
 
     if fusion_type is None:
@@ -526,16 +533,14 @@ def init_experiment(experiment_name,
         optimizer_names = ["ekf", "dynamics", "measurement"]
     else:
         # image_modality_model
-        image_measurement = PandaEKFMeasurementModel(missing_modalities=['gripper_sensors'],
-                                                     units=64,
-                                                     use_states=False )
+        image_measurement = PandaEKFMeasurementModel2GAP(missing_modalities=['gripper_sensors'],
+                                                         units=units)
         image_dynamics = PandaDynamicsModel(use_particles=False, learnable_Q=learnable_Q)
         image_model = KalmanFilterNetwork(image_dynamics, image_measurement)
 
         # force_modality_model
-        force_measurement = PandaEKFMeasurementModel(missing_modalities=['image'],
-                                                     units=64,
-                                                     use_statse=False )
+        force_measurement = PandaEKFMeasurementModel2GAP(missing_modalities=['image'],
+                                                         units=units)
         force_dynamics = PandaDynamicsModel(use_particles=False, learnable_Q=learnable_Q)
         force_model = KalmanFilterNetwork(force_dynamics, force_measurement)
 
@@ -560,7 +565,7 @@ def init_experiment(experiment_name,
     if omnipush:
         eval_trajectories = omnipush_datasets.load_trajectories(("simpler/train0.hdf5", 100), **dataset_args)
     else:
-        eval_trajectories = panda_datasets.load_trajectories(("data/gentle_push_1000.hdf5", 100), **dataset_args)
+        eval_trajectories = panda_datasets.load_trajectories(("data/gentle_push_100.hdf5", 100), **dataset_args)
 
     return model, buddy, eval_trajectories
 
@@ -594,14 +599,16 @@ def ekf_eval_experiment(experiment_name,
                         fusion_type=None,
                         omnipush=False,
                         learnable_Q=False,
-                       load_checkpoint=None):
+                       load_checkpoint=None,
+                       units=64):
     # Experiment configuration
 
     model, buddy, eval_trajectories = init_experiment(experiment_name,
                                                       fusion_type,
                                                       omnipush,
                                                       learnable_Q,
-                                                      load_checkpoint)
+                                                      load_checkpoint, 
+                                                     units)
     if load_checkpoint is None: 
         buddy.load_checkpoint()
     else:
@@ -617,7 +624,7 @@ def ekf_eval_experiment(experiment_name,
     else:
         x = rollout_fusion(model,
          eval_trajectories,
-         true_initial=False,
+         true_initial=True,
          init_state_noise=0.2)
 
     return x
