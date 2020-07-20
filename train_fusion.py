@@ -45,6 +45,7 @@ if __name__ == '__main__':
     parser.add_argument("--meas_lr", default=1e-5, type=float)
     parser.add_argument("--ekf_lr", default=5e-6, type=float)
     parser.add_argument("--freeze_dyn", action="store_true")
+    parser.add_argument("--measurement_init", action="store_true")
 
     args = parser.parse_args()
 
@@ -74,6 +75,7 @@ if __name__ == '__main__':
         'freeze_dyn': args.freeze_dyn,
         'meas_lr': args.meas_lr,
         'ekf_lr': args.ekf_lr,
+        'measurement_init': args.measurement_init,
 
     }
     # image_modality_model
@@ -284,14 +286,16 @@ if __name__ == '__main__':
             training.train_e2e(buddy, force_model,
                                e2e_trainset_loader,
                                optim_name="force_ekf",
-                               loss_type=args.ekf_loss)
+                               loss_type=args.ekf_loss,
+                               measurement_init=args.measurement_init)
 
         for i in range(args.pretrain):
             print("Training img ekf epoch", i)
             training.train_e2e(buddy, image_model,
                                e2e_trainset_loader,
                                optim_name="im_ekf",
-                               loss_type=args.ekf_loss)
+                               loss_type=args.ekf_loss,
+                               measurement_init=args.measurement_init)
 
         buddy.save_checkpoint("phase_3_e2e")
 
@@ -304,6 +308,7 @@ if __name__ == '__main__':
         training.train_fusion(buddy, fusion_model, e2e_trainset_loader,
                               optim_name="fusion",
                               one_loss=not args.many_loss,
-                              init_state_noise=args.init_state_noise,)
+                              init_state_noise=args.init_state_noise,
+                              measurement_init=args.measurement_init)
 
     buddy.save_checkpoint("phase_4_fusion")
