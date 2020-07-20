@@ -571,7 +571,7 @@ def init_experiment(experiment_name,
 
 
 def ekf_eval_full(experiment_name,
-                fusion_type=None,
+                  fusion_type=None,
                 omnipush=False,
                 learnable_Q=False,
                load_checkpoint=None):
