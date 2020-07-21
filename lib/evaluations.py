@@ -522,7 +522,8 @@ def init_experiment(experiment_name,
                     fusion_type=None,
                     omnipush=False,
                     learnable_Q=False,
-                    load_checkpoint=None):
+                    load_checkpoint=None,
+                    units=64):
     # Experiment configuration
 
     if fusion_type is None:
@@ -533,13 +534,13 @@ def init_experiment(experiment_name,
     else:
         # image_modality_model
         image_measurement = PandaEKFMeasurementModel2GAP(missing_modalities=['gripper_sensors'],
-                                                         units=64)
+                                                         units=units)
         image_dynamics = PandaDynamicsModel(use_particles=False, learnable_Q=learnable_Q)
         image_model = KalmanFilterNetwork(image_dynamics, image_measurement)
 
         # force_modality_model
         force_measurement = PandaEKFMeasurementModel2GAP(missing_modalities=['image'],
-                                                         units=64)
+                                                         units=units)
         force_dynamics = PandaDynamicsModel(use_particles=False, learnable_Q=learnable_Q)
         force_model = KalmanFilterNetwork(force_dynamics, force_measurement)
 
@@ -570,7 +571,7 @@ def init_experiment(experiment_name,
 
 
 def ekf_eval_full(experiment_name,
-                fusion_type=None,
+                  fusion_type=None,
                 omnipush=False,
                 learnable_Q=False,
                load_checkpoint=None):
@@ -598,14 +599,16 @@ def ekf_eval_experiment(experiment_name,
                         fusion_type=None,
                         omnipush=False,
                         learnable_Q=False,
-                       load_checkpoint=None):
+                       load_checkpoint=None,
+                       units=64):
     # Experiment configuration
 
     model, buddy, eval_trajectories = init_experiment(experiment_name,
                                                       fusion_type,
                                                       omnipush,
                                                       learnable_Q,
-                                                      load_checkpoint)
+                                                      load_checkpoint, 
+                                                     units)
     if load_checkpoint is None: 
         buddy.load_checkpoint()
     else:
@@ -621,7 +624,7 @@ def ekf_eval_experiment(experiment_name,
     else:
         x = rollout_fusion(model,
          eval_trajectories,
-         true_initial=False,
+         true_initial=True,
          init_state_noise=0.2)
 
     return x
