@@ -79,8 +79,8 @@ class KalmanFusionModel(nn.Module):
                                    force_beta[:, 0:state_dim]])
 
             # weights for sigma
-            weights_for_sigma = [torch.diag_embed(image_beta[:, 0:state_dim], offset=0, dim1=-2, dim2=-1),
-                                 torch.diag_embed(force_beta[:, 0:state_dim], offset=0, dim1=-2, dim2=-1)]
+            weights_for_sigma = [torch.diag_embed(1./(image_beta[:, 0:state_dim]+1e-9), offset=0, dim1=-2, dim2=-1),
+                                 torch.diag_embed(1./(force_beta[:, 0:state_dim]+1e-9), offset=0, dim1=-2, dim2=-1)]
 
             # todo: this only works for state dim =2, can use lower triangle for more dim?
             # setting diagonals

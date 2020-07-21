@@ -240,7 +240,7 @@ if __name__ == '__main__':
             shuffle=True,
             num_workers=8)
 
-        buddy.set_learning_rate(args.meas_lr,
+        buddy.set_learning_rate(args.meas_lr*0.1,
                                 optimizer_name="force_meas")
 
         buddy.set_learning_rate(args.meas_lr,
@@ -273,7 +273,7 @@ if __name__ == '__main__':
     # train e2e ekf
     if args.train == "all" or args.train == "ekf":
 
-        buddy.set_learning_rate(args.ekf_lr,
+        buddy.set_learning_rate(args.ekf_lr*3,
                                 optimizer_name="force_ekf")
         buddy.set_learning_rate(args.ekf_lr,
                                 optimizer_name="im_ekf")
@@ -281,7 +281,7 @@ if __name__ == '__main__':
             fannypack.utils.freeze_module(image_model.dynamics_model)
             fannypack.utils.freeze_module(force_model.dynamics_model)
 
-        for i in range(args.pretrain):
+        for i in range(args.epochs):
             print("Training force ekf epoch", i)
             training.train_e2e(buddy, force_model,
                                e2e_trainset_loader,
@@ -289,7 +289,7 @@ if __name__ == '__main__':
                                loss_type=args.ekf_loss,
                                measurement_init=args.measurement_init)
 
-        for i in range(args.pretrain):
+        for i in range(args.epochs):
             print("Training img ekf epoch", i)
             training.train_e2e(buddy, image_model,
                                e2e_trainset_loader,
@@ -302,7 +302,12 @@ if __name__ == '__main__':
     # train fusion
     buddy.set_learning_rate(args.lr, optimizer_name="fusion")
 
-    for i in range(args.epochs):
+    fannypack.utils.freeze_module(image_model.measurement_model)
+    fannypack.utils.freeze_module(force_model.measurement_model)
+    fannypack.utils.freeze_module(image_model.dynamics_model)
+    fannypack.utils.freeze_module(force_model.dynamics_model)
+
+    for i in range(args.pretrain):
         print("Training fusion epoch", i)
 
         training.train_fusion(buddy, fusion_model, e2e_trainset_loader,
@@ -311,4 +316,31 @@ if __name__ == '__main__':
                               init_state_noise=args.init_state_noise,
                               measurement_init=args.measurement_init)
 
-    buddy.save_checkpoint("phase_4_fusion")
+    buddy.save_checkpoint("phase_4_fusion_frozen")
+    fannypack.utils.unfreeze_module(image_model.measurement_model)
+    fannypack.utils.unfreeze_module(force_model.measurement_model)
+    fannypack.utils.unfreeze_module(image_model.dynamics_model)
+    fannypack.utils.unfreeze_module(force_model.dynamics_model)
+
+    for i in range(args.pretrain):
+        print("Training fusion epoch", i)
+
+        training.train_fusion(buddy, fusion_model, e2e_trainset_loader,
+                              optim_name="fusion",
+                              one_loss=False,
+                              init_state_noise=args.init_state_noise,
+                              measurement_init=args.measurement_init)
+
+    buddy.save_checkpoint("phase_4_fusion_manyloss")
+
+    for i in range(args.epochs):
+        print("Training fusion epoch", i)
+
+        training.train_fusion(buddy, fusion_model, e2e_trainset_loader,
+                              optim_name="fusion",
+                              one_loss=True,
+                              init_state_noise=args.init_state_noise,
+                              measurement_init=args.measurement_init)
+
+
+    buddy.save_checkpoint("phase_4_fusion_all")
