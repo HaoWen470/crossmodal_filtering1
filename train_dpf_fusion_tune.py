@@ -45,7 +45,7 @@ suffix = args.suffix
 pf_image_model = panda_models.PandaParticleFilterNetwork(
     panda_models.PandaDynamicsModel(),
     panda_models.PandaMeasurementModel(
-        units=args.hidden_units, missing_modalities=['gripper_force'])
+        units=args.hidden_units, missing_modalities=['gripper_sensors'])
 )
 pf_force_model = panda_models.PandaParticleFilterNetwork(
     panda_models.PandaDynamicsModel(),
